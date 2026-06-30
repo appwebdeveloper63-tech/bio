@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; img-src 'self' data:;">
+<title>Group 3 · Cell Biology Question Bank</title>
+<meta name="description" content="Group 3's interactive cell biology question bank — Set 1, Set 2, games, and an AI study buddy.">
+<meta property="og:title" content="Group 3 · Cell Biology Question Bank">
+<meta property="og:description" content="Two full question sets, an organelle memory game, a speed quiz, and an AI study buddy — all in one neon-lit page.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Group 3 · Cell Biology Question Bank">
+<meta name="twitter:description" content="Two full question sets, games, and an AI study buddy.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05060d;
+  --bg2:#0a0d1c;
+  --cyan:#00f0ff;
+  --magenta:#ff2bd6;
+  --green:#39ff88;
+  --amber:#ffd23f;
+  --violet:#b86bff;
+  --ink:#eef2ff;
+  --ink-dim:#9aa3c2;
+  --card:#0d1024cc;
+  --border:rgba(255,255,255,0.08);
+  --radius:18px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;min-height:100%;}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'Space Grotesk',sans-serif;
+  overflow-x:hidden;
+  min-height:100vh;
+  position:relative;
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;}
+}
+canvas#bgCanvas{
+  position:fixed; inset:0; width:100%; height:100%; z-index:0; display:block;
+}
+.veil{
+  position:fixed; inset:0; z-index:1; pointer-events:none;
+  background:radial-gradient(circle at 50% 0%, rgba(184,107,255,0.10), transparent 60%),
+             radial-gradient(circle at 0% 100%, rgba(0,240,255,0.08), transparent 55%);
+}
+.app{ position:relative; z-index:2; min-height:100vh; display:flex; flex-direction:column; }
+
+/* ---------- Glow text ---------- */
+.neon-text{
+  font-family:'Orbitron',sans-serif;
+  font-weight:900;
+  background-image:linear-gradient(90deg,var(--cyan),var(--magenta),var(--green),var(--amber),var(--violet),var(--cyan));
+  background-size:300% 100%;
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  animation:hue-shift 6s linear infinite;
+  text-shadow:0 0 30px rgba(0,240,255,0.25);
+}
+@keyframes hue-shift{
+  0%{background-position:0% 50%;}
+  100%{background-position:300% 50%;}
+}
+
+/* ---------- Screens ---------- */
+.screen{
+  flex:1; display:none; flex-direction:column; align-items:center;
+  padding:48px 20px 120px; min-height:100vh; animation:fadeIn 0.5s ease both;
+}
+.screen.active{display:flex;}
+@keyframes fadeIn{from{opacity:0; transform:translateY(12px);} to{opacity:1; transform:translateY(0);}}
+
+/* ---------- Landing ---------- */
+#screen-home{justify-content:center; text-align:center;}
+.eyebrow{
+  font-family:'JetBrains Mono',monospace;
+  letter-spacing:0.35em; text-transform:uppercase;
+  color:var(--ink-dim); font-size:12px; margin-bottom:18px;
+}
+.title-main{font-size:clamp(34px,7vw,76px); line-height:1.05; margin:0;}
+.subtitle{
+  margin:18px 0 44px; color:var(--ink-dim); font-size:16px; max-width:520px;
+}
+.btn{
+  font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:16px;
+  padding:16px 38px; border-radius:999px; border:1px solid var(--border);
+  background:linear-gradient(120deg, rgba(0,240,255,0.12), rgba(184,107,255,0.12));
+  color:var(--ink); cursor:pointer; position:relative; overflow:hidden;
+  transition:transform 0.2s ease, box-shadow 0.2s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.btn:hover{transform:translateY(-2px); box-shadow:0 0 28px rgba(0,240,255,0.35), 0 0 48px rgba(184,107,255,0.2);}
+.btn:active{transform:translateY(0px) scale(0.98);}
+.btn:focus-visible{outline:2px solid var(--cyan); outline-offset:3px;}
+.btn-primary{border-color:rgba(0,240,255,0.4);}
+.pulse{animation:pulseGlow 2.4s ease-in-out infinite;}
+@keyframes pulseGlow{
+  0%,100%{box-shadow:0 0 16px rgba(0,240,255,0.25);}
+  50%{box-shadow:0 0 36px rgba(184,107,255,0.45);}
+}
+
+/* ---------- Top nav ---------- */
+.topnav{
+  position:sticky; top:0; z-index:20; display:flex; gap:10px; justify-content:center;
+  flex-wrap:wrap; padding:14px 16px; backdrop-filter:blur(10px);
+  background:rgba(5,6,13,0.55); border-bottom:1px solid var(--border);
+}
+.topnav .navbtn{
+  font-family:'JetBrains Mono',monospace; font-size:12.5px; letter-spacing:0.05em;
+  padding:9px 16px; border-radius:999px; border:1px solid var(--border);
+  background:rgba(255,255,255,0.03); color:var(--ink-dim); cursor:pointer;
+  transition:all 0.2s ease;
+}
+.topnav .navbtn:hover{color:var(--ink); border-color:var(--cyan); box-shadow:0 0 14px rgba(0,240,255,0.25);}
+.topnav .navbtn.is-active{color:var(--bg); background:var(--cyan); border-color:var(--cyan); font-weight:600;}
+
+/* ---------- Set picker ---------- */
+.set-grid{display:flex; gap:28px; flex-wrap:wrap; justify-content:center; margin-top:24px;}
+.set-card{
+  width:260px; padding:34px 26px; border-radius:var(--radius);
+  border:1px solid var(--border); background:var(--card); text-align:center;
+  cursor:pointer; transition:transform 0.25s ease, box-shadow 0.25s ease;
+}
+.set-card:hover{transform:translateY(-6px); box-shadow:0 12px 40px rgba(184,107,255,0.25);}
+.set-card h3{font-family:'Orbitron',sans-serif; margin:0 0 8px; font-size:22px;}
+.set-card p{color:var(--ink-dim); font-size:14px; margin:0;}
+
+/* ---------- Question list ---------- */
+.qwrap{width:100%; max-width:780px; margin:0 auto;}
+.qhead{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
+.qhead h2{font-family:'Orbitron',sans-serif; font-size:24px; margin:0;}
+.qcard{
+  border:1px solid var(--border); background:var(--card); border-radius:14px;
+  padding:18px 20px; margin-bottom:14px; cursor:pointer; transition:border-color 0.2s ease;
+}
+.qcard:hover{border-color:rgba(0,240,255,0.35);}
+.qnum{font-family:'JetBrains Mono',monospace; color:var(--cyan); font-size:12px; margin-bottom:6px; display:block;}
+.qtext{font-weight:600; font-size:15.5px; line-height:1.5;}
+.options{margin-top:12px; display:grid; gap:8px;}
+.opt{
+  font-family:'JetBrains Mono',monospace; font-size:13.5px; padding:8px 12px;
+  border-radius:8px; border:1px solid var(--border); color:var(--ink-dim);
+}
+.opt.is-correct{border-color:var(--green); color:var(--green); background:rgba(57,255,136,0.07);}
+.answer{
+  margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);
+  font-size:14px; color:var(--ink); display:none; line-height:1.6;
+}
+.qcard.revealed .answer{display:block;}
+.qcard.revealed{border-color:rgba(57,255,136,0.3);}
+.reveal-hint{font-size:11.5px; color:var(--ink-dim); font-family:'JetBrains Mono',monospace; margin-top:10px;}
+
+/* ---------- Games ---------- */
+.games-grid{display:flex; gap:24px; flex-wrap:wrap; justify-content:center; width:100%; max-width:900px;}
+.game-panel{
+  width:100%; border:1px solid var(--border); background:var(--card); border-radius:var(--radius);
+  padding:26px; margin-bottom:24px;
+}
+.game-panel h3{font-family:'Orbitron',sans-serif; margin-top:0;}
+.memory-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:18px;}
+.mem-card{
+  aspect-ratio:1/1; border-radius:10px; border:1px solid var(--border);
+  background:rgba(255,255,255,0.03); display:flex; align-items:center; justify-content:center;
+  text-align:center; font-size:11.5px; padding:6px; cursor:pointer; user-select:none;
+  transition:transform 0.15s ease, background 0.2s ease;
+}
+.mem-card.flipped{background:rgba(0,240,255,0.08); border-color:var(--cyan); color:var(--ink);}
+.mem-card.matched{background:rgba(57,255,136,0.1); border-color:var(--green); color:var(--green); cursor:default;}
+.mem-card.hidden-text{color:transparent;}
+.mem-card.hidden-text::after{content:"?"; color:var(--ink-dim); font-size:20px;}
+.quiz-stage{margin-top:16px;}
+.quiz-meta{display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--ink-dim); margin-bottom:10px;}
+.timer-bar{height:6px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden; margin-bottom:18px;}
+.timer-fill{height:100%; background:linear-gradient(90deg,var(--cyan),var(--magenta)); width:100%; transition:width 0.2s linear;}
+.quiz-opt{
+  display:block; width:100%; text-align:left; margin-bottom:9px; padding:12px 14px;
+  border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.03);
+  color:var(--ink); cursor:pointer; font-family:'Space Grotesk',sans-serif; font-size:14.5px;
+}
+.quiz-opt:hover{border-color:var(--cyan);}
+.quiz-opt.correct{border-color:var(--green); background:rgba(57,255,136,0.1);}
+.quiz-opt.wrong{border-color:var(--magenta); background:rgba(255,43,214,0.1);}
+
+/* ---------- Chatbot ---------- */
+.chat-fab{
+  position:fixed; bottom:22px; right:22px; z-index:50; width:58px; height:58px;
+  border-radius:50%; border:1px solid rgba(0,240,255,0.4); cursor:pointer;
+  background:radial-gradient(circle at 30% 30%, rgba(0,240,255,0.5), rgba(184,107,255,0.3));
+  box-shadow:0 0 24px rgba(0,240,255,0.35); display:flex; align-items:center; justify-content:center;
+  font-size:24px;
+}
+.chat-panel{
+  position:fixed; bottom:92px; right:22px; z-index:50; width:min(340px,90vw); max-height:60vh;
+  display:none; flex-direction:column; border-radius:16px; border:1px solid var(--border);
+  background:#0a0d1cf2; backdrop-filter:blur(12px); overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+.chat-panel.open{display:flex;}
+.chat-head{padding:14px 16px; border-bottom:1px solid var(--border); font-family:'Orbitron',sans-serif; font-size:14px;}
+.chat-body{flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; font-size:13.5px;}
+.msg{padding:9px 12px; border-radius:10px; max-width:88%; line-height:1.45; white-space:pre-wrap; word-break:break-word;}
+.msg.user{align-self:flex-end; background:rgba(0,240,255,0.14); border:1px solid rgba(0,240,255,0.25);}
+.msg.bot{align-self:flex-start; background:rgba(255,255,255,0.05); border:1px solid var(--border);}
+.chat-input-row{display:flex; gap:8px; padding:12px; border-top:1px solid var(--border);}
+.chat-input-row input{
+  flex:1; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px;
+  color:var(--ink); padding:10px 12px; font-family:'Space Grotesk',sans-serif; font-size:13.5px;
+}
+.chat-input-row input:focus{outline:none; border-color:var(--cyan);}
+.chat-input-row button{
+  background:var(--cyan); color:#05060d; border:none; border-radius:10px; padding:0 16px;
+  font-weight:700; cursor:pointer;
+}
+
+/* ---------- Footer ---------- */
+.foot{
+  text-align:center; padding:30px 0; font-family:'JetBrains Mono',monospace; font-size:12px;
+  color:var(--ink-dim); letter-spacing:0.08em;
+}
+
+@media (max-width:560px){
+  .memory-grid{grid-template-columns:repeat(3,1fr);}
+}
+
+/* ---------- XP / Level ---------- */
+.xp-pill{
+  display:flex; align-items:center; gap:8px; padding:6px 14px; border-radius:999px;
+  border:1px solid var(--border); background:rgba(255,255,255,0.03);
+  font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ink-dim);
+}
+.xp-pill .lvl{color:var(--amber); font-weight:700;}
+.xp-track{width:64px; height:6px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden;}
+.xp-track-fill{height:100%; background:linear-gradient(90deg,var(--cyan),var(--green)); transition:width 0.4s ease;}
+.sound-toggle{
+  width:34px; height:34px; border-radius:50%; border:1px solid var(--border);
+  background:rgba(255,255,255,0.03); color:var(--ink-dim); cursor:pointer; font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+}
+
+/* ---------- Stats screen ---------- */
+.stats-hero{text-align:center; margin-bottom:30px;}
+.stats-level{font-family:'Orbitron',sans-serif; font-size:54px; margin:0;}
+.stats-xpbar{width:100%; max-width:420px; height:12px; border-radius:8px; background:rgba(255,255,255,0.08); overflow:hidden; margin:14px auto;}
+.stats-xpbar-fill{height:100%; background:linear-gradient(90deg,var(--cyan),var(--magenta),var(--green)); transition:width 0.6s ease;}
+.stats-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; max-width:700px; width:100%; margin-bottom:30px;}
+.stat-box{border:1px solid var(--border); background:var(--card); border-radius:14px; padding:18px; text-align:center;}
+.stat-box .num{font-family:'Orbitron',sans-serif; font-size:26px; color:var(--cyan);}
+.stat-box .lbl{font-size:11.5px; color:var(--ink-dim); margin-top:4px;}
+.badge-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:14px; max-width:760px; width:100%;}
+.badge-item{
+  border:1px solid var(--border); background:var(--card); border-radius:14px; padding:16px; text-align:center;
+  opacity:0.35; transition:opacity 0.3s ease, transform 0.3s ease;
+}
+.badge-item.unlocked{opacity:1; border-color:rgba(255,210,63,0.4); box-shadow:0 0 18px rgba(255,210,63,0.15);}
+.badge-item .icon{font-size:30px; display:block; margin-bottom:6px;}
+.badge-item .name{font-weight:600; font-size:13px;}
+.badge-item .desc{font-size:11px; color:var(--ink-dim); margin-top:4px; line-height:1.4;}
+
+/* ---------- Toasts ---------- */
+.toast-container{position:fixed; top:18px; right:18px; z-index:80; display:flex; flex-direction:column; gap:10px; max-width:300px;}
+.toast{
+  padding:12px 16px; border-radius:12px; background:#0a0d1cf2; border:1px solid var(--amber);
+  box-shadow:0 0 22px rgba(255,210,63,0.25); font-size:13px; display:flex; gap:10px; align-items:center;
+  animation:toastIn 0.35s ease both;
+}
+.toast .ic{font-size:20px;}
+@keyframes toastIn{from{opacity:0; transform:translateX(40px);} to{opacity:1; transform:translateX(0);}}
+.toast.fade-out{animation:toastOut 0.35s ease both;}
+@keyframes toastOut{to{opacity:0; transform:translateX(40px);}}
+
+/* ---------- Mode select (quiz) ---------- */
+.mode-row{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+.mode-btn{
+  flex:1; min-width:120px; padding:10px; border-radius:10px; border:1px solid var(--border);
+  background:rgba(255,255,255,0.03); color:var(--ink); cursor:pointer; font-family:'Space Grotesk',sans-serif;
+  font-size:13px; text-align:center;
+}
+.mode-btn.boss{border-color:rgba(255,43,214,0.35); color:var(--magenta);}
+.mode-btn:hover{border-color:var(--cyan);}
+
+/* ---------- Chat extras ---------- */
+.provider-tag{
+  font-family:'JetBrains Mono',monospace; font-size:10px; margin-top:4px; opacity:0.7;
+  display:block;
+}
+.provider-tag.groq{color:var(--cyan);}
+.provider-tag.openrouter{color:var(--violet);}
+.provider-tag.gemini{color:var(--green);}
+.provider-tag.anthropic{color:var(--amber);}
+.provider-tag.local{color:var(--ink-dim);}
+.typing-dots{display:inline-flex; gap:4px; padding:6px 4px;}
+.typing-dots span{
+  width:6px; height:6px; border-radius:50%; background:var(--cyan); display:inline-block;
+  animation:typingBounce 1.2s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2){animation-delay:0.15s;}
+.typing-dots span:nth-child(3){animation-delay:0.3s;}
+@keyframes typingBounce{0%,80%,100%{transform:translateY(0); opacity:0.4;} 40%{transform:translateY(-5px); opacity:1;}}
+
+/* ---------- Cursor trail ---------- */
+.cursor-dot{
+  position:fixed; width:6px; height:6px; border-radius:50%; pointer-events:none; z-index:9999;
+  transform:translate(-50%,-50%); mix-blend-mode:screen;
+}
+
+/* ---------- Card tilt ---------- */
+.set-card, .game-panel{ will-change:transform; transition:transform 0.15s ease, box-shadow 0.25s ease; transform-style:preserve-3d; }
+
+</style>
+</head>
+<body>
+<canvas id="bgCanvas"></canvas>
+<div class="veil"></div>
+
+<div class="app">
+
+  <nav class="topnav" id="topnav" style="display:none;">
+    <button class="navbtn" data-go="home">Home</button>
+    <button class="navbtn" data-go="set1">Set 1</button>
+    <button class="navbtn" data-go="set2">Set 2</button>
+    <button class="navbtn" data-go="games">Games</button>
+    <button class="navbtn" data-go="flashcards">Flashcards</button>
+    <button class="navbtn" data-go="microscope">Microscope</button>
+    <button class="navbtn" data-go="reference">Reference</button>
+    <button class="navbtn" data-go="notes">My Notes</button>
+    <button class="navbtn" data-go="stats">Stats</button>
+    <div class="xp-pill" id="xpPill"><span class="lvl">Lv.1</span><div class="xp-track"><div class="xp-track-fill" id="xpTrackFill" style="width:0%"></div></div></div>
+    <button class="sound-toggle" id="soundToggle" aria-label="Toggle sound">🔊</button>
+  </nav>
+
+  <!-- HOME -->
+  <section class="screen active" id="screen-home">
+    <div class="eyebrow">Cell Biology · Question Bank</div>
+    <h1 class="title-main neon-text">Welcome to<br>Science Assignment</h1>
+    <p class="subtitle">Solutions &amp; transport, membranes, and the plant cell wall — two full question sets, two games, and an AI study buddy.</p>
+    <button class="btn btn-primary pulse" id="nextBtn">Next →</button>
+  </section>
+
+  <!-- SET PICKER (shown after Next) -->
+  <section class="screen" id="screen-picker">
+    <div class="eyebrow">Choose a set</div>
+    <h2 class="neon-text" style="font-size:32px;">Group 3 Question Bank</h2>
+    <div class="set-grid">
+      <div class="set-card" data-go="set1">
+        <h3>Set 1</h3>
+        <p>30 questions · Membranes, osmosis &amp; the cell wall</p>
+      </div>
+      <div class="set-card" data-go="set2">
+        <h3>Set 2</h3>
+        <p>30 questions · Microscopy, transport &amp; cell walls</p>
+      </div>
+      <div class="set-card" data-go="games">
+        <h3>Games</h3>
+        <p>Memory match &amp; speed quiz with difficulty levels</p>
+      </div>
+      <div class="set-card" data-go="microscope">
+        <h3>Virtual Microscope</h3>
+        <p>Focus &amp; zoom into 50 specimen types</p>
+      </div>
+      <div class="set-card" data-go="flashcards">
+        <h3>Flashcards</h3>
+        <p>Flip through every short-answer question</p>
+      </div>
+      <div class="set-card" data-go="reference">
+        <h3>Quick Reference</h3>
+        <p>Prokaryotes vs Eukaryotes, at a glance</p>
+      </div>
+      <a class="set-card" href="https://notebooklm.google.com/notebook/a12842fa-ca93-4ef3-9e77-5ade4664ac58/artifact/e6b32b6c-16dd-4369-bcc0-489884d98212" target="_blank" rel="noopener noreferrer" style="text-decoration:none; color:inherit; display:block;">
+        <h3>🌱 How Does Life Begin?</h3>
+        <p>Opens the group's NotebookLM overview in a new tab</p>
+      </a>
+    </div>
+    <div style="margin-top:14px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-dim);">
+      Second NotebookLM artifact: <a href="https://notebooklm.google.com/notebook/a12842fa-ca93-4ef3-9e77-5ade4664ac58/artifact/05a8c3bd-003b-4080-933e-ab5222443507" target="_blank" rel="noopener noreferrer" style="color:var(--cyan);">open in new tab ↗</a>
+    </div>
+  </section>
+
+  <!-- SET 1 -->
+  <section class="screen" id="screen-set1">
+    <div class="qwrap">
+      <div class="qhead"><h2 class="neon-text">Set 1</h2><span class="reveal-hint">Tap a question to reveal the answer</span></div>
+      <div id="set1List"></div>
+    </div>
+  </section>
+
+  <!-- SET 2 -->
+  <section class="screen" id="screen-set2">
+    <div class="qwrap">
+      <div class="qhead"><h2 class="neon-text">Set 2</h2><span class="reveal-hint">Tap a question to reveal the answer</span></div>
+      <div id="set2List"></div>
+    </div>
+  </section>
+
+  <!-- GAMES -->
+  <section class="screen" id="screen-games">
+    <div class="qwrap" style="max-width:900px;">
+      <div class="qhead"><h2 class="neon-text">Games</h2></div>
+      <div class="games-grid">
+        <div class="game-panel">
+          <h3>🧠 Organelle Match</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Flip two cards to match each structure with its job. Find all 8 pairs.</p>
+          <div id="memMeta" style="font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--ink-dim);">Moves: 0 · Matched: 0/8</div>
+          <div class="memory-grid" id="memoryGrid"></div>
+          <button class="btn" id="memReset" style="margin-top:16px;">Shuffle again</button>
+        </div>
+        <div class="game-panel">
+          <h3>⚡ Speed Quiz</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Pick a difficulty, pick a mode, and go. You'll see why each answer is right or wrong as you go.</p>
+          <div class="quiz-stage" id="quizStage">
+            <div class="mode-row" id="difficultyRow">
+              <button class="mode-btn is-active" data-diff="all">All</button>
+              <button class="mode-btn" data-diff="easy">Easy</button>
+              <button class="mode-btn" data-diff="medium">Medium</button>
+              <button class="mode-btn" data-diff="hard">Hard</button>
+            </div>
+            <div class="mode-row">
+              <button class="mode-btn" data-mode="quick">⚡ Quick Quiz<br><span style="font-size:11px;color:var(--ink-dim);">10 questions · 15s each</span></button>
+              <button class="mode-btn boss" data-mode="boss">👑 Boss Mode<br><span style="font-size:11px;color:var(--ink-dim);">20 questions · 10s each · 2x XP</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FLASHCARDS -->
+  <section class="screen" id="screen-flashcards">
+    <div class="qwrap" style="max-width:560px; text-align:center;">
+      <div class="qhead" style="justify-content:center;"><h2 class="neon-text">Flashcards</h2></div>
+      <div class="mode-row" id="flashDeckRow" style="margin-bottom:18px;">
+        <button class="mode-btn is-active" data-deck="all">All 40</button>
+        <button class="mode-btn" data-deck="set1">Set 1</button>
+        <button class="mode-btn" data-deck="set2">Set 2</button>
+      </div>
+      <div id="flashStage"></div>
+
+      <div class="game-panel" style="margin-top:28px; text-align:left;">
+        <h3>📤 Upload your own notes</h3>
+        <p style="color:var(--ink-dim); font-size:13px; margin-top:-6px;">
+          Paste notes or upload a .txt file. If an AI backend is configured it writes proper flashcards;
+          otherwise this still works offline using a simple fill-in-the-blank generator.
+        </p>
+        <textarea id="uploadText" placeholder="Paste your notes here..." style="width:100%; min-height:100px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:12px; color:var(--ink); padding:12px; font-family:'Space Grotesk',sans-serif; font-size:14px; resize:vertical;"></textarea>
+        <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+          <input type="file" id="uploadFile" accept=".txt" style="font-size:12px; color:var(--ink-dim);">
+          <button class="btn btn-primary" id="generateFlashBtn">Generate flashcards</button>
+        </div>
+        <p style="font-size:11px; color:var(--ink-dim); margin-top:8px;">Only .txt files are read directly. PDFs/Word docs: open them and paste the text instead.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- MICROSCOPE -->
+  <section class="screen" id="screen-microscope">
+    <div class="qwrap" style="max-width:900px;">
+      <div class="qhead"><h2 class="neon-text">Virtual Microscope</h2><span class="reveal-hint">Pick a slide, choose a zoom tier, then turn the focus knobs</span></div>
+      <div id="specimenPicker" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;"></div>
+      <div class="game-panel">
+        <div style="display:flex; gap:24px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:240px; display:flex; align-items:center; justify-content:center;">
+            <div id="scopeView" style="width:260px; height:260px; border-radius:50%; border:6px solid #1a1d33; background:#04060a; display:flex; align-items:center; justify-content:center; overflow:hidden; box-shadow:inset 0 0 40px rgba(0,0,0,0.6);"></div>
+          </div>
+          <div style="flex:1; min-width:240px;">
+            <div class="quiz-meta"><span id="scopeName">Pick a specimen</span><span id="scopeFocusReadout">—</span></div>
+            <div class="mode-row" id="zoomRow">
+              <button class="mode-btn is-active" data-tier="0">Low (40X)</button>
+              <button class="mode-btn" data-tier="1">Medium (100X)</button>
+              <button class="mode-btn" data-tier="2">High (400X)</button>
+            </div>
+            <label style="font-size:12px; color:var(--ink-dim); display:block; margin-top:16px;">Coarse adjustment</label>
+            <input type="range" id="coarseFocus" min="-10" max="10" value="0" step="1" style="width:100%;">
+            <label style="font-size:12px; color:var(--ink-dim); display:block; margin-top:10px;">Fine adjustment</label>
+            <input type="range" id="fineFocus" min="-1" max="1" value="0" step="0.05" style="width:100%;">
+            <p id="scopeFact" style="font-size:13px; color:var(--ink-dim); margin-top:16px; min-height:40px;">Select a specimen on the left to load a slide.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REFERENCE -->
+  <section class="screen" id="screen-reference">
+    <div class="qwrap" style="max-width:760px;">
+      <div class="qhead"><h2 class="neon-text">Quick Reference</h2></div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13.5px;" id="refTable">
+          <thead><tr>
+            <th style="text-align:left; padding:10px; border-bottom:1px solid var(--border); color:var(--cyan); font-family:'JetBrains Mono',monospace; font-size:12px;">Feature</th>
+            <th style="text-align:left; padding:10px; border-bottom:1px solid var(--border); color:var(--green); font-family:'JetBrains Mono',monospace; font-size:12px;">Prokaryotic</th>
+            <th style="text-align:left; padding:10px; border-bottom:1px solid var(--border); color:var(--violet); font-family:'JetBrains Mono',monospace; font-size:12px;">Eukaryotic</th>
+          </tr></thead>
+          <tbody id="refTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- NOTES -->
+  <section class="screen" id="screen-notes">
+    <div class="qwrap" style="max-width:640px;">
+      <div class="qhead"><h2 class="neon-text">My Notes</h2></div>
+      <p style="color:var(--ink-dim); font-size:13px; margin-top:-10px;">Saved only in this browser, on this device — not shared with classmates or stored on a server.</p>
+      <textarea id="noteInput" placeholder="Type a note, a tricky question, or anything to remember..." style="width:100%; min-height:90px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:12px; color:var(--ink); padding:12px; font-family:'Space Grotesk',sans-serif; font-size:14px; resize:vertical;"></textarea>
+      <button class="btn btn-primary" id="addNoteBtn" style="margin-top:10px;">Save note</button>
+      <div id="notesList" style="margin-top:20px;"></div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="screen" id="screen-stats">
+    <div class="qwrap" style="max-width:760px; align-items:center; display:flex; flex-direction:column;">
+      <div class="stats-hero">
+        <div class="eyebrow">Your progress</div>
+        <h2 class="stats-level neon-text" id="statsLevel">Level 1</h2>
+        <div class="stats-xpbar"><div class="stats-xpbar-fill" id="statsXpFill" style="width:0%"></div></div>
+        <p style="color:var(--ink-dim); font-size:13px;" id="statsXpText">0 / 100 XP</p>
+      </div>
+      <div class="stats-grid" id="statsGrid"></div>
+      <h3 class="neon-text" style="font-size:20px; align-self:flex-start;">Badges</h3>
+      <div class="badge-grid" id="badgeGrid" style="margin-top:14px;"></div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <div style="margin-bottom:8px;">By Group 3</div>
+    <div style="display:flex; gap:40px; justify-content:center; flex-wrap:wrap; font-size:11.5px; opacity:0.85;">
+      <div><strong style="color:var(--cyan);">Group Leader: Hossain Azmal</strong><br>Dhanvi Saha · Boni Majhi</div>
+      <div><strong style="color:var(--violet);">Group Leader: Kritika Pramanik</strong><br>Krittika Singh · Jaydeep Dewri</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Chatbot -->
+<button class="chat-fab" id="chatFab" aria-label="Open study chatbot">💬</button>
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-head">Study Buddy</div>
+  <div class="chat-body" id="chatBody"></div>
+  <div class="chat-input-row">
+    <input id="chatInput" type="text" maxlength="300" placeholder="Ask about osmosis, cell wall...">
+    <button id="chatSend">Send</button>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
