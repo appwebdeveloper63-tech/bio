@@ -2,45 +2,116 @@
   "use strict";
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let activeSpeech = { btn: null, utterance: null };
-  function speak(text, btnEl) {
-    if (!('speechSynthesis' in window) || !text) return;
-    try {
-      if (btnEl && btnEl.classList.contains('speaking') && activeSpeech.btn === btnEl) {
-        window.speechSynthesis.cancel();
-        btnEl.classList.remove('speaking');
-        activeSpeech = { btn: null, utterance: null };
-        return;
-      }
-      if (activeSpeech.btn && activeSpeech.btn !== btnEl) activeSpeech.btn.classList.remove('speaking');
-      window.speechSynthesis.cancel();
-    } catch { /* speech unavailable or busy — ignore */ }
+  let activeSpeech = { btn: null, utterance: null, session: 0 };
+  let speechVoices = [];
+  const speechPrefs = { rate: 1, voiceURI: '' };
 
+  function clamp(n, min, max) {
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function refreshSpeechPrefsFromProgress() {
+    speechPrefs.rate = clamp(Number(progress.speechRate ?? 1) || 1, 0.5, 1.5);
+    speechPrefs.voiceURI = progress.voiceURI || '';
+  }
+
+  function getSpeechVoice() {
+    return speechVoices.find(v => v.voiceURI === speechPrefs.voiceURI) || null;
+  }
+
+  function createSpeechUtterance(text) {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
-    utterance.rate = 0.95;
-    activeSpeech = { btn: btnEl || null, utterance };
+    utterance.rate = speechPrefs.rate;
+    utterance.pitch = 1;
+    const voice = getSpeechVoice();
+    if (voice) utterance.voice = voice;
+    return utterance;
+  }
+
+  function stopSpeech() {
+    activeSpeech.session++;
+    try { window.speechSynthesis.cancel(); } catch {}
+    if (activeSpeech.btn) {
+      activeSpeech.btn.classList.remove('speaking');
+      activeSpeech.btn.classList.remove('active');
+    }
+    activeSpeech = { btn: null, utterance: null, session: activeSpeech.session };
+  }
+
+  function speak(text, btnEl) {
+    if (!('speechSynthesis' in window) || !text) return;
+    if (btnEl && btnEl.classList.contains('speaking') && activeSpeech.btn === btnEl) {
+      stopSpeech();
+      return;
+    }
+    stopSpeech();
+
+    const session = activeSpeech.session;
+    const utterance = createSpeechUtterance(text);
+    activeSpeech = { btn: btnEl || null, utterance, session };
     utterance.onstart = () => {
-      if (activeSpeech.utterance === utterance && btnEl) btnEl.classList.add('speaking');
+      if (activeSpeech.session === session && btnEl) btnEl.classList.add('speaking');
     };
     utterance.onend = () => {
-      if (activeSpeech.utterance === utterance) {
+      if (activeSpeech.session === session) {
         if (btnEl) btnEl.classList.remove('speaking');
-        activeSpeech = { btn: null, utterance: null };
+        activeSpeech = { btn: null, utterance: null, session };
       }
     };
     utterance.onerror = () => {
-      if (activeSpeech.utterance === utterance) {
+      if (activeSpeech.session === session) {
         if (btnEl) btnEl.classList.remove('speaking');
-        activeSpeech = { btn: null, utterance: null };
+        activeSpeech = { btn: null, utterance: null, session };
       }
     };
     try {
       window.speechSynthesis.speak(utterance);
     } catch {
       if (btnEl) btnEl.classList.remove('speaking');
-      activeSpeech = { btn: null, utterance: null };
+      activeSpeech = { btn: null, utterance: null, session };
     }
+  }
+
+  function speakQueue(lines, btnEl, onDone) {
+    if (!('speechSynthesis' in window) || !lines.length) return;
+    stopSpeech();
+    const session = activeSpeech.session;
+    let idx = 0;
+    const step = () => {
+      if (activeSpeech.session !== session) return;
+      if (idx >= lines.length) {
+        if (btnEl) {
+          btnEl.classList.remove('speaking');
+          btnEl.classList.remove('active');
+        }
+        if (typeof onDone === 'function') onDone();
+        activeSpeech = { btn: null, utterance: null, session };
+        return;
+      }
+      const utterance = createSpeechUtterance(lines[idx]);
+      activeSpeech = { btn: btnEl || null, utterance, session };
+      utterance.onstart = () => {
+        if (activeSpeech.session === session && btnEl) btnEl.classList.add('speaking');
+      };
+      utterance.onend = () => {
+        if (activeSpeech.session !== session) return;
+        idx += 1;
+        step();
+      };
+      utterance.onerror = () => {
+        if (activeSpeech.session !== session) return;
+        idx += 1;
+        step();
+      };
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        idx += 1;
+        step();
+      }
+    };
+    step();
   }
 
   /* ===================== Storage (localStorage — this is a real deployed site, not a Claude artifact, so this is safe & appropriate) ===================== */
@@ -49,15 +120,56 @@
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (!raw) throw new Error('none');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw) || {};
+      return {
+        xp: 0,
+        badges: [],
+        seenQuestions: [],
+        bestMemoryMoves: null,
+        maxStreak: 0,
+        notes: [],
+        flashStats: { gotIt: 0 },
+        favorites: [],
+        theme: 'dark',
+        speechRate: 1,
+        voiceURI: '',
+        quizBest: {},
+        dailyStreak: 0,
+        lastVisit: '',
+        setDone: {},
+        ...parsed,
+        badges: Array.isArray(parsed.badges) ? parsed.badges : [],
+        seenQuestions: Array.isArray(parsed.seenQuestions) ? parsed.seenQuestions : [],
+        notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+        favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
+        flashStats: parsed.flashStats && typeof parsed.flashStats === 'object' ? parsed.flashStats : { gotIt: 0 },
+        quizBest: parsed.quizBest && typeof parsed.quizBest === 'object' ? parsed.quizBest : {},
+        setDone: parsed.setDone && typeof parsed.setDone === 'object' ? parsed.setDone : {}
+      };
     } catch {
-      return { xp: 0, badges: [], seenQuestions: [], bestMemoryMoves: null, maxStreak: 0, notes: [], flashStats: { gotIt: 0 } };
+      return { xp: 0, badges: [], seenQuestions: [], bestMemoryMoves: null, maxStreak: 0, notes: [], flashStats: { gotIt: 0 }, favorites: [], theme: 'dark', speechRate: 1, voiceURI: '', quizBest: {}, dailyStreak: 0, lastVisit: '', setDone: {} };
     }
   }
   function saveProgress() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(progress)); } catch { /* storage unavailable — fail silently, XP just won't persist */ }
   }
   let progress = loadProgress();
+  refreshSpeechPrefsFromProgress();
+
+  function normalizeThemeName(theme) {
+    return theme === 'light' || theme === 'aurora' ? theme : 'dark';
+  }
+
+  function applyTheme(theme, persist = false) {
+    const next = normalizeThemeName(theme);
+    if (next === 'dark') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', next);
+    progress.theme = next;
+    if (persist) saveProgress();
+    updateThemeButtons();
+  }
+
+  applyTheme(progress.theme || 'dark', false);
 
   /* ===================== Sound (synthesized — no external audio files, no copyright concerns) ===================== */
   let audioCtx = null;
@@ -220,13 +332,17 @@
     if (statsGrid) {
       const seenSet1 = progress.seenQuestions.filter(k => k.startsWith('set1')).length;
       const seenSet2 = progress.seenQuestions.filter(k => k.startsWith('set2')).length;
+      const bestQuiz = Math.max(Number(progress.quizBest?.quick || 0), Number(progress.quizBest?.boss || 0));
       statsGrid.innerHTML = '';
       [
         ['Total XP', progress.xp],
         ['Best streak', progress.maxStreak],
+        ['Daily streak', `${progress.dailyStreak || 0} day${(progress.dailyStreak || 0) === 1 ? '' : 's'}`],
+        ['Best quiz score', bestQuiz],
         ['Set 1 reviewed', `${seenSet1}/30`],
         ['Set 2 reviewed', `${seenSet2}/30`],
         ['Best memory moves', progress.bestMemoryMoves ?? '—'],
+        ['Favorites', progress.favorites?.length || 0],
         ['Badges earned', `${progress.badges.length}/${BADGES.length}`]
       ].forEach(([lbl, num]) => {
         const box = document.createElement('div');
@@ -357,6 +473,7 @@
     microscope: document.getElementById('screen-microscope'),
     reference: document.getElementById('screen-reference'),
     notes: document.getElementById('screen-notes'),
+    favorites: document.getElementById('screen-favorites'),
     stats: document.getElementById('screen-stats')
   };
   const topnav = document.getElementById('topnav');
@@ -384,7 +501,15 @@
     document.querySelectorAll('.topnav .navbtn').forEach(b => b.classList.toggle('is-active', b.dataset.go === name));
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (name === 'stats') refreshXpUI();
+    if (name === 'stats') {
+      refreshSpeechPrefsFromProgress();
+      syncSpeechSettingsUI();
+      renderVoiceList();
+    }
     if (name === 'notes') renderNotes();
+    if (name === 'favorites') renderFavorites();
+    if (name === 'set1') renderSetList('set1');
+    if (name === 'set2') renderSetList('set2');
     sfx.click();
   }
   document.getElementById('nextBtn').addEventListener('click', () => {
@@ -395,137 +520,656 @@
   attachTilt('.set-card');
   attachTilt('.game-panel');
 
-  /* ===================== Render question sets ===================== */
-  function renderSet(containerId, setData, setKey) {
-    const container = document.getElementById(containerId);
-    const frag = document.createDocumentFragment();
-    let num = 1;
-    const totalQ = setData.mcq.length + setData.saq.length;
+  const questionBank = { set1: [], set2: [] };
+  const questionMap = new Map();
+  const questionUIState = { revealed: new Set() };
+  const favoriteKeys = new Set(progress.favorites || []);
+  const setUI = {
+    set1: { query: '', difficulty: 'all', listEl: null, emptyEl: null, progressFill: null, progressText: null, revealBtn: null, readBtn: null, stopBtn: null },
+    set2: { query: '', difficulty: 'all', listEl: null, emptyEl: null, progressFill: null, progressText: null, revealBtn: null, readBtn: null, stopBtn: null }
+  };
+  let favoriteScreenDirty = true;
 
-    function checkSetBadge() {
-      const seenCount = progress.seenQuestions.filter(k => k.startsWith(setKey + '-')).length;
-      if (seenCount >= totalQ) unlockBadge(setKey === 'set1' ? 'set1_complete' : 'set2_complete');
+  function normalizeSearchText(text) {
+    return String(text || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function tokenizeSearchText(text) {
+    const tokens = normalizeSearchText(text).split(' ').filter(Boolean);
+    return [...new Set(tokens)];
+  }
+
+  function saveFavorites() {
+    progress.favorites = [...favoriteKeys];
+    saveProgress();
+  }
+
+  function getQuestionBank(setKey, setData) {
+    if (questionBank[setKey].length) return questionBank[setKey];
+    const entries = [];
+    setData.mcq.forEach((item, index) => {
+      const key = `${setKey}-mcq-${index}`;
+      const answerLetter = 'abcd'[item.correctIndex];
+      const answerText = `${answerLetter}) ${item.options[item.correctIndex]}`;
+      const explanation = item.explain || '';
+      const speechAnswer = `The answer of this question is (${answerLetter}) ${item.options[item.correctIndex]}${explanation ? `. Explanation: ${explanation}` : ''}`;
+      const entry = {
+        key,
+        setKey,
+        type: 'mcq',
+        index,
+        q: item.q,
+        options: item.options,
+        correctIndex: item.correctIndex,
+        explain: explanation,
+        difficulty: item.difficulty || '',
+        answerText: `The answer of this question is (${answerLetter}) ${item.options[item.correctIndex]}`,
+        speechAnswer,
+        searchText: normalizeSearchText([item.q, ...item.options, answerText, explanation].join(' '))
+      };
+      questionMap.set(key, entry);
+      entries.push(entry);
+    });
+    setData.saq.forEach((item, index) => {
+      const key = `${setKey}-saq-${index}`;
+      const speechAnswer = `The answer of this question is (${item.a})`;
+      const entry = {
+        key,
+        setKey,
+        type: 'saq',
+        index,
+        q: item.q,
+        a: item.a,
+        difficulty: item.difficulty || '',
+        answerText: speechAnswer,
+        speechAnswer,
+        searchText: normalizeSearchText([item.q, item.a].join(' '))
+      };
+      questionMap.set(key, entry);
+      entries.push(entry);
+    });
+    questionBank[setKey] = entries;
+    return entries;
+  }
+
+  function updateSetProgress(setKey) {
+    const state = setUI[setKey];
+    const total = questionBank[setKey].length || 0;
+    const seen = questionBank[setKey].filter(entry => progress.seenQuestions.includes(entry.key)).length;
+    if (state.progressFill) state.progressFill.style.width = total ? `${Math.round((seen / total) * 100)}%` : '0%';
+    if (state.progressText) state.progressText.textContent = total ? `${seen} / ${total} seen · ${Math.round((seen / total) * 100)}%` : '0 / 0 seen';
+    if (state.revealBtn) {
+      const allRevealed = total > 0 && questionBank[setKey].every(entry => questionUIState.revealed.has(entry.key));
+      state.revealBtn.textContent = allRevealed ? 'Collapse all' : 'Reveal all';
+      state.revealBtn.classList.toggle('active', allRevealed);
     }
+    if (total > 0 && seen === total && !progress.setDone[setKey]) {
+      progress.setDone[setKey] = true;
+      saveProgress();
+      burstConfetti();
+      showToast('🎉', `Set ${setKey.slice(-1)} complete — every question reviewed!`);
+    }
+  }
 
-    setData.mcq.forEach((item, i) => {
-      const key = `${setKey}-mcq-${i}`;
-      const card = document.createElement('div');
-      card.className = 'qcard';
-      const numEl = document.createElement('span'); numEl.className = 'qnum'; numEl.textContent = `Question ${num}`;
-      const diffTag = document.createElement('span');
-      diffTag.style.cssText = 'float:right; font-family:JetBrains Mono,monospace; font-size:10px; opacity:0.7;';
-      diffTag.textContent = item.difficulty || '';
-      const qEl = document.createElement('div'); qEl.className = 'qtext'; qEl.textContent = item.q;
-      const optsEl = document.createElement('div'); optsEl.className = 'options';
-      item.options.forEach((opt, oi) => {
-        const o = document.createElement('div'); o.className = 'opt'; o.dataset.idx = oi;
+  function syncThemeButtons() {
+    document.querySelectorAll('[data-theme-choice]').forEach(btn => {
+      btn.classList.toggle('is-active', btn.dataset.themeChoice === normalizeThemeName(progress.theme || 'dark'));
+    });
+  }
+
+  function updateThemeButtons() {
+    syncThemeButtons();
+  }
+
+  function syncSpeechSettingsUI() {
+    const rateRange = document.getElementById('speechRateRange');
+    const rateValue = document.getElementById('speechRateValue');
+    const voiceSelect = document.getElementById('speechVoiceSelect');
+    if (rateRange) rateRange.value = String(speechPrefs.rate);
+    if (rateValue) rateValue.textContent = `${Number(speechPrefs.rate).toFixed(2)}×`;
+    if (voiceSelect) voiceSelect.value = speechPrefs.voiceURI || '';
+    syncThemeButtons();
+  }
+
+  function renderVoiceList() {
+    const voiceSelect = document.getElementById('speechVoiceSelect');
+    const voiceNote = document.getElementById('speechVoiceNote');
+    if (!voiceSelect) return;
+    const voices = ('speechSynthesis' in window) ? window.speechSynthesis.getVoices() : [];
+    speechVoices = Array.isArray(voices) ? voices.slice() : [];
+    voiceSelect.innerHTML = '';
+    if (!speechVoices.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Default voice';
+      voiceSelect.appendChild(opt);
+      voiceSelect.disabled = true;
+      if (voiceNote) voiceNote.textContent = 'No speech voices are currently available in this browser.';
+      return;
+    }
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Default voice';
+    voiceSelect.appendChild(defaultOpt);
+    speechVoices.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.voiceURI;
+      opt.textContent = `${v.name}${v.lang ? ` · ${v.lang}` : ''}${v.default ? ' · default' : ''}`;
+      voiceSelect.appendChild(opt);
+    });
+    voiceSelect.disabled = false;
+    const chosen = speechVoices.some(v => v.voiceURI === speechPrefs.voiceURI) ? speechPrefs.voiceURI : '';
+    speechPrefs.voiceURI = chosen;
+    voiceSelect.value = chosen;
+    if (voiceNote) voiceNote.textContent = 'Choose a voice for question reading and the welcome message.';
+  }
+
+  function persistSpeechPrefs() {
+    progress.speechRate = clamp(speechPrefs.rate, 0.5, 1.5);
+    progress.voiceURI = speechPrefs.voiceURI || '';
+    saveProgress();
+  }
+
+  function renderFavorites() {
+    const list = document.getElementById('favoritesList');
+    const empty = document.getElementById('favoritesEmptyNote');
+    if (!list || !empty) return;
+    list.innerHTML = '';
+    const items = [...favoriteKeys].map(key => questionMap.get(key)).filter(Boolean);
+    empty.hidden = items.length > 0;
+    if (!items.length) return;
+    items.forEach(entry => list.appendChild(createQuestionCard(entry, { fromFavorites: true })));
+  }
+
+  function toggleFavorite(key) {
+    if (favoriteKeys.has(key)) favoriteKeys.delete(key);
+    else favoriteKeys.add(key);
+    favoriteScreenDirty = true;
+    saveFavorites();
+    if (document.getElementById('screen-favorites')?.classList.contains('active')) renderFavorites();
+    showToast('⭐', favoriteKeys.has(key) ? 'Added to favorites' : 'Removed from favorites');
+    return favoriteKeys.has(key);
+  }
+
+  function matchesQuestionSearch(entry, query) {
+    if (!query) return true;
+    const search = entry.searchText;
+    if (search.includes(query)) return true;
+    const queryTokens = tokenizeSearchText(query);
+    if (!queryTokens.length) return true;
+    const entryTokens = tokenizeSearchText(search);
+    return queryTokens.every(qtok => entryTokens.some(etok => {
+      if (etok === qtok) return true;
+      if (qtok.length >= 4 && etok.startsWith(qtok)) return true;
+      if (etok.length >= 4 && qtok.startsWith(etok)) return true;
+      return false;
+    }));
+  }
+
+  function setRevealState(entry, next, forceSeen = false) {
+    const wasRevealed = questionUIState.revealed.has(entry.key);
+    if (next) {
+      questionUIState.revealed.add(entry.key);
+      if (!wasRevealed || forceSeen) {
+        if (markSeen(entry.key)) { addXp(3); updateSetProgress(entry.setKey); }
+        else updateSetProgress(entry.setKey);
+      }
+      return !wasRevealed;
+    }
+    questionUIState.revealed.delete(entry.key);
+    updateSetProgress(entry.setKey);
+    return false;
+  }
+
+  function createQuestionCard(entry, options = {}) {
+    const card = document.createElement('div');
+    card.className = 'qcard';
+    card.dataset.key = entry.key;
+
+    const numEl = document.createElement('span');
+    numEl.className = 'qnum';
+    numEl.textContent = `Question ${entry.index + 1}`;
+
+    const diffTag = document.createElement('span');
+    diffTag.style.cssText = 'float:right; font-family:JetBrains Mono,monospace; font-size:10px; opacity:0.7;';
+    diffTag.textContent = entry.difficulty || '';
+
+    const qEl = document.createElement('div');
+    qEl.className = 'qtext';
+    qEl.textContent = entry.q;
+
+    const toolsEl = document.createElement('div');
+    toolsEl.className = 'qtools';
+
+    const revealIfNeeded = () => {
+      const next = !card.classList.contains('revealed');
+      if (next) {
+        const firstTime = setRevealState(entry, true, true);
+        card.classList.add('revealed');
+        if (entry.type === 'mcq') {
+          optsEl.children[entry.correctIndex]?.classList.add('is-correct');
+        }
+        if (firstTime) updateSetProgress(entry.setKey);
+      } else {
+        questionUIState.revealed.delete(entry.key);
+        card.classList.remove('revealed');
+        updateSetProgress(entry.setKey);
+      }
+    };
+
+    const speakQBtn = document.createElement('button');
+    speakQBtn.type = 'button';
+    speakQBtn.className = 'speak-btn';
+    speakQBtn.innerHTML = '<span class="speak-ic">🔊</span><span>Hear question</span>';
+    speakQBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      speak(entry.q, speakQBtn);
+    });
+
+    const speakABtn = document.createElement('button');
+    speakABtn.type = 'button';
+    speakABtn.className = 'speak-btn answer-speak';
+    speakABtn.innerHTML = '<span class="speak-ic">🔈</span><span>Hear answer</span>';
+    speakABtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!card.classList.contains('revealed')) {
+        setRevealState(entry, true, true);
+        card.classList.add('revealed');
+        if (entry.type === 'mcq') optsEl.children[entry.correctIndex]?.classList.add('is-correct');
+      }
+      speak(entry.speechAnswer, speakABtn);
+    });
+
+    const favBtn = document.createElement('button');
+    favBtn.type = 'button';
+    favBtn.className = 'speak-btn star-btn';
+    favBtn.innerHTML = '<span class="speak-ic">⭐</span><span>Favorite</span>';
+    const syncFavBtn = () => {
+      const fav = favoriteKeys.has(entry.key);
+      favBtn.classList.toggle('is-favorited', fav);
+      favBtn.setAttribute('aria-pressed', String(fav));
+      favBtn.querySelector('span:last-child').textContent = fav ? 'Saved' : 'Favorite';
+    };
+    favBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleFavorite(entry.key);
+      syncFavBtn();
+    });
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'speak-btn';
+    copyBtn.innerHTML = '<span class="speak-ic">📋</span><span>Copy</span>';
+    copyBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      copyQuestion(entry);
+    });
+
+    const optsEl = document.createElement('div');
+    optsEl.className = 'options';
+
+    const ansEl = document.createElement('div');
+    ansEl.className = 'answer';
+
+    if (entry.type === 'mcq') {
+      entry.options.forEach((opt, oi) => {
+        const o = document.createElement('div');
+        o.className = 'opt';
+        o.dataset.idx = oi;
         o.textContent = `${'abcd'[oi]}) ${opt}`;
         optsEl.appendChild(o);
       });
-      const ansEl = document.createElement('div'); ansEl.className = 'answer';
-      ansEl.innerHTML = '';
       const ansLine = document.createElement('div');
-      const answerText = `The answer of this question is (${('abcd'[item.correctIndex])}) ${item.options[item.correctIndex]})`;
-      ansLine.textContent = answerText;
+      ansLine.textContent = entry.answerText;
       const explainLine = document.createElement('div');
-      explainLine.style.marginTop = '8px'; explainLine.style.color = 'var(--ink-dim)'; explainLine.style.fontSize = '13px';
-      explainLine.textContent = item.explain || '';
-      const toolsEl = document.createElement('div'); toolsEl.className = 'qtools';
-      const speakQBtn = document.createElement('button');
-      speakQBtn.type = 'button';
-      speakQBtn.className = 'speak-btn';
-      speakQBtn.innerHTML = '<span class="speak-ic">🔊</span><span>Hear question</span>';
-      speakQBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        speak(item.q, speakQBtn);
-      });
-      const speakABtn = document.createElement('button');
-      speakABtn.type = 'button';
-      speakABtn.className = 'speak-btn answer-speak';
-      speakABtn.innerHTML = '<span class="speak-ic">🔈</span><span>Hear answer</span>';
-      speakABtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        revealCard(true);
-        const spokenAnswer = item.explain ? `${answerText}. Explanation: ${item.explain}` : answerText;
-        speak(spokenAnswer, speakABtn);
-      });
-      toolsEl.append(speakQBtn, speakABtn);
+      explainLine.style.marginTop = '8px';
+      explainLine.style.color = 'var(--ink-dim)';
+      explainLine.style.fontSize = '13px';
+      explainLine.textContent = entry.explain || '';
       ansEl.append(ansLine, explainLine);
+    } else {
+      ansEl.textContent = entry.answerText;
+    }
 
-      function revealCard(force = false) {
-        const wasRevealed = card.classList.contains('revealed');
-        if (force) {
-          if (!wasRevealed) {
-            card.classList.add('revealed');
-            optsEl.children[item.correctIndex].classList.add('is-correct');
-            if (markSeen(key)) { addXp(3); checkSetBadge(); }
-          }
-          return;
+    const banner = document.createElement('div');
+    banner.className = 'favorite-card-banner';
+    banner.textContent = options.fromFavorites ? `${entry.setKey.toUpperCase()} · ${entry.type.toUpperCase()}` : '';
+
+    card.addEventListener('click', () => revealIfNeeded());
+    toolsEl.append(speakQBtn, speakABtn, favBtn, copyBtn);
+    if (banner.textContent) card.append(numEl, diffTag, qEl, optsEl, ansEl, toolsEl, banner);
+    else card.append(numEl, diffTag, qEl, optsEl, ansEl, toolsEl);
+
+    if (favoriteKeys.has(entry.key)) syncFavBtn();
+    if (questionUIState.revealed.has(entry.key)) {
+      card.classList.add('revealed');
+      if (entry.type === 'mcq') optsEl.children[entry.correctIndex]?.classList.add('is-correct');
+    }
+    return card;
+  }
+
+  function renderSetList(setKey) {
+    const state = setUI[setKey];
+    if (!state.listEl) return;
+    const entries = questionBank[setKey] || [];
+    const query = normalizeSearchText(state.query);
+    const diff = state.difficulty || 'all';
+    const filtered = entries.filter(entry => matchesQuestionSearch(entry, query) && (diff === 'all' || (entry.difficulty || '') === diff));
+    state.listEl.innerHTML = '';
+    if (!filtered.length) {
+      state.emptyEl.hidden = false;
+      state.emptyEl.textContent = (query || diff !== 'all') ? 'No matches. Try a different keyword or difficulty.' : 'No questions in this set yet.';
+    } else {
+      state.emptyEl.hidden = true;
+      filtered.forEach(entry => state.listEl.appendChild(createQuestionCard(entry)));
+    }
+    updateSetProgress(setKey);
+  }
+
+  function toggleRevealAll(setKey) {
+    const entries = questionBank[setKey] || [];
+    const allRevealed = entries.length > 0 && entries.every(entry => questionUIState.revealed.has(entry.key));
+    if (allRevealed) {
+      entries.forEach(entry => questionUIState.revealed.delete(entry.key));
+    } else {
+      entries.forEach(entry => {
+        const firstTime = !progress.seenQuestions.includes(entry.key);
+        questionUIState.revealed.add(entry.key);
+        if (firstTime) {
+          if (markSeen(entry.key)) addXp(3);
         }
-        card.classList.toggle('revealed');
-        if (!wasRevealed) {
-          optsEl.children[item.correctIndex].classList.add('is-correct');
-          if (markSeen(key)) { addXp(3); checkSetBadge(); }
-        }
-      }
-
-      card.append(numEl, diffTag, qEl, optsEl, ansEl, toolsEl);
-      card.addEventListener('click', () => revealCard());
-      frag.appendChild(card);
-      num++;
-    });
-
-    setData.saq.forEach((item, i) => {
-      const key = `${setKey}-saq-${i}`;
-      const card = document.createElement('div');
-      card.className = 'qcard';
-      const numEl = document.createElement('span'); numEl.className = 'qnum'; numEl.textContent = `Question ${num}`;
-      const qEl = document.createElement('div'); qEl.className = 'qtext'; qEl.textContent = item.q;
-      const answerText = `The answer of this question is (${item.a})`;
-      const ansEl = document.createElement('div'); ansEl.className = 'answer'; ansEl.textContent = answerText;
-      const toolsEl = document.createElement('div'); toolsEl.className = 'qtools';
-      const speakQBtn = document.createElement('button');
-      speakQBtn.type = 'button';
-      speakQBtn.className = 'speak-btn';
-      speakQBtn.innerHTML = '<span class="speak-ic">🔊</span><span>Hear question</span>';
-      speakQBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        speak(item.q, speakQBtn);
       });
-      const speakABtn = document.createElement('button');
-      speakABtn.type = 'button';
-      speakABtn.className = 'speak-btn answer-speak';
-      speakABtn.innerHTML = '<span class="speak-ic">🔈</span><span>Hear answer</span>';
-      speakABtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        revealCard(true);
-        speak(answerText, speakABtn);
-      });
-      toolsEl.append(speakQBtn, speakABtn);
+      saveProgress();
+    }
+    renderSetList(setKey);
+  }
 
-      function revealCard(force = false) {
-        const wasRevealed = card.classList.contains('revealed');
-        if (force) {
-          if (!wasRevealed) {
-            card.classList.add('revealed');
-            if (markSeen(key)) { addXp(3); checkSetBadge(); }
-          }
-          return;
-        }
-        card.classList.toggle('revealed');
-        if (!wasRevealed && markSeen(key)) { addXp(3); checkSetBadge(); }
-      }
-
-      card.append(numEl, qEl, ansEl, toolsEl);
-      card.addEventListener('click', () => revealCard());
-      frag.appendChild(card);
-      num++;
+  function readSetAloud(setKey) {
+    const entries = questionBank[setKey] || [];
+    const lines = [];
+    entries.forEach(entry => {
+      lines.push(`Question ${entry.index + 1}. ${entry.q}`);
+      lines.push(entry.speechAnswer);
     });
+    const state = setUI[setKey];
+    if (state.readBtn) state.readBtn.classList.add('active');
+    if (state.stopBtn) state.stopBtn.disabled = false;
+    speakQueue(lines, state.readBtn, () => {
+      if (state.readBtn) state.readBtn.classList.remove('active');
+      if (state.stopBtn) state.stopBtn.disabled = false;
+    });
+  }
 
-    container.appendChild(frag);
+  function buildShareText(entry) {
+    const lines = [`Q${entry.index + 1}: ${entry.q}`];
+    if (entry.type === 'mcq') {
+      entry.options.forEach((opt, oi) => lines.push(`${'abcd'[oi]}) ${opt}`));
+      lines.push(entry.answerText);
+      if (entry.explain) lines.push(`Explanation: ${entry.explain}`);
+    } else {
+      lines.push(entry.answerText);
+    }
+    return lines.join('\n');
+  }
+
+  function copyQuestion(entry) {
+    const text = buildShareText(entry);
+    const done = () => showToast('📋', 'Copied question & answer');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text, done) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      done();
+    } catch {
+      showToast('⚠️', 'Copy not supported in this browser');
+    }
+  }
+
+  function surpriseMe(setKey) {
+    const pools = setKey ? [setKey] : ['set1', 'set2'];
+    const all = pools.flatMap(sk => questionBank[sk] || []);
+    if (!all.length) return;
+    const entry = all[Math.floor(Math.random() * all.length)];
+    const targetSet = entry.setKey;
+    setUI[targetSet].query = '';
+    setUI[targetSet].difficulty = 'all';
+    const searchInput = document.getElementById(`${targetSet}Search`);
+    if (searchInput) searchInput.value = '';
+    syncDifficultyButtons(targetSet);
+    questionUIState.revealed.add(entry.key);
+    if (markSeen(entry.key)) addXp(3);
+    goTo(targetSet);
+    renderSetList(targetSet);
+    requestAnimationFrame(() => {
+      const card = setUI[targetSet].listEl?.querySelector(`[data-key="${entry.key}"]`);
+      if (card) {
+        card.classList.add('revealed', 'surprise-flash');
+        const opts = card.querySelector('.options');
+        if (entry.type === 'mcq' && opts) opts.children[entry.correctIndex]?.classList.add('is-correct');
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => card.classList.remove('surprise-flash'), 1600);
+      }
+    });
+    showToast('🎲', `Jumped to a random ${targetSet.toUpperCase()} question`);
+  }
+
+  function syncDifficultyButtons(setKey) {
+    document.querySelectorAll(`#${setKey}Filters .chip`).forEach(btn => {
+      btn.classList.toggle('is-active', (btn.dataset.diff || 'all') === (setUI[setKey].difficulty || 'all'));
+    });
+  }
+
+  function initSetUI(setKey, containerId) {
+    const state = setUI[setKey];
+    state.listEl = document.getElementById(containerId);
+    state.emptyEl = document.getElementById(`${setKey}EmptyNote`);
+    state.progressFill = document.getElementById(`${setKey}ProgressFill`);
+    state.progressText = document.getElementById(`${setKey}ProgressText`);
+    state.revealBtn = document.getElementById(`${setKey}RevealAll`);
+    state.readBtn = document.getElementById(`${setKey}ReadAll`);
+    state.stopBtn = document.getElementById(`${setKey}StopRead`);
+    const search = document.getElementById(`${setKey}Search`);
+    if (search && !search.dataset.bound) {
+      search.dataset.bound = '1';
+      search.addEventListener('input', () => {
+        state.query = search.value;
+        renderSetList(setKey);
+      });
+    }
+    if (state.revealBtn && !state.revealBtn.dataset.bound) {
+      state.revealBtn.dataset.bound = '1';
+      state.revealBtn.addEventListener('click', () => toggleRevealAll(setKey));
+    }
+    if (state.readBtn && !state.readBtn.dataset.bound) {
+      state.readBtn.dataset.bound = '1';
+      state.readBtn.addEventListener('click', () => readSetAloud(setKey));
+    }
+    if (state.stopBtn && !state.stopBtn.dataset.bound) {
+      state.stopBtn.dataset.bound = '1';
+      state.stopBtn.addEventListener('click', () => {
+        stopSpeech();
+        if (state.readBtn) state.readBtn.classList.remove('active');
+      });
+    }
+    const surpriseBtn = document.getElementById(`${setKey}Surprise`);
+    if (surpriseBtn && !surpriseBtn.dataset.bound) {
+      surpriseBtn.dataset.bound = '1';
+      surpriseBtn.addEventListener('click', () => surpriseMe(setKey));
+    }
+    const filters = document.getElementById(`${setKey}Filters`);
+    if (filters && !filters.dataset.bound) {
+      filters.dataset.bound = '1';
+      filters.querySelectorAll('.chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.difficulty = btn.dataset.diff || 'all';
+          syncDifficultyButtons(setKey);
+          renderSetList(setKey);
+        });
+      });
+      syncDifficultyButtons(setKey);
+    }
+    updateSetProgress(setKey);
+  }
+
+  /* ===================== Render question sets ===================== */
+  function renderSet(containerId, setData, setKey) {
+    getQuestionBank(setKey, setData);
+    initSetUI(setKey, containerId);
+    renderSetList(setKey);
   }
   renderSet('set1List', SET1, 'set1');
   renderSet('set2List', SET2, 'set2');
+  renderFavorites();
+  renderVoiceList();
+
+  document.querySelectorAll('[data-theme-choice]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyTheme(btn.dataset.themeChoice, true);
+    });
+  });
+
+  const speechRateRange = document.getElementById('speechRateRange');
+  const speechRateValue = document.getElementById('speechRateValue');
+  const speechVoiceSelect = document.getElementById('speechVoiceSelect');
+  if (speechRateRange && !speechRateRange.dataset.bound) {
+    speechRateRange.dataset.bound = '1';
+    speechRateRange.value = String(speechPrefs.rate);
+    speechRateRange.addEventListener('input', () => {
+      speechPrefs.rate = clamp(Number(speechRateRange.value) || 1, 0.5, 1.5);
+      if (speechRateValue) speechRateValue.textContent = `${speechPrefs.rate.toFixed(2)}×`;
+      persistSpeechPrefs();
+    });
+  }
+  if (speechVoiceSelect && !speechVoiceSelect.dataset.bound) {
+    speechVoiceSelect.dataset.bound = '1';
+    speechVoiceSelect.addEventListener('change', () => {
+      speechPrefs.voiceURI = speechVoiceSelect.value || '';
+      persistSpeechPrefs();
+    });
+  }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = renderVoiceList;
+    window.speechSynthesis.addEventListener?.('voiceschanged', renderVoiceList);
+  }
+
+  const chatMic = document.getElementById('chatMic');
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  if (chatMic) {
+    if (!SpeechRecognition) {
+      chatMic.hidden = true;
+    } else {
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      let lastTranscript = '';
+      recognition.onstart = () => {
+        chatMic.classList.add('recording');
+        chatMic.setAttribute('aria-pressed', 'true');
+      };
+      recognition.onresult = event => {
+        lastTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (res.isFinal && res[0] && res[0].transcript) lastTranscript += res[0].transcript;
+        }
+        const transcript = lastTranscript.trim();
+        if (transcript) {
+          chatInput.value = transcript;
+          sendChat();
+        }
+      };
+      recognition.onerror = () => {
+        chatMic.classList.remove('recording');
+        chatMic.setAttribute('aria-pressed', 'false');
+      };
+      recognition.onend = () => {
+        chatMic.classList.remove('recording');
+        chatMic.setAttribute('aria-pressed', 'false');
+      };
+      chatMic.addEventListener('click', () => {
+        if (chatMic.classList.contains('recording')) {
+          recognition.stop();
+          return;
+        }
+        try {
+          recognition.start();
+        } catch {}
+      });
+    }
+  }
+
+  /* ===================== Daily streak ===================== */
+  (function initDailyStreak() {
+    const today = new Date();
+    const dayKey = d => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const todayKey = dayKey(today);
+    const last = progress.lastVisit || '';
+    if (last !== todayKey) {
+      const yKey = dayKey(new Date(today.getTime() - 86400000));
+      progress.dailyStreak = (last === yKey) ? (progress.dailyStreak || 0) + 1 : 1;
+      progress.lastVisit = todayKey;
+      saveProgress();
+      const n = progress.dailyStreak;
+      setTimeout(() => showToast('🔥', n > 1 ? `${n}-day study streak — keep it up!` : 'Day 1 of your study streak!'), 900);
+    }
+  })();
+
+  /* ===================== Keyboard shortcuts + help overlay ===================== */
+  function currentSetKey() {
+    if (screens.set1?.classList.contains('active')) return 'set1';
+    if (screens.set2?.classList.contains('active')) return 'set2';
+    return null;
+  }
+  const helpOverlay = document.getElementById('helpOverlay');
+  function toggleHelp(force) {
+    if (!helpOverlay) return;
+    const show = typeof force === 'boolean' ? force : helpOverlay.hidden;
+    helpOverlay.hidden = !show;
+  }
+  document.getElementById('helpFab')?.addEventListener('click', () => toggleHelp());
+  document.getElementById('helpClose')?.addEventListener('click', () => toggleHelp(false));
+  helpOverlay?.addEventListener('click', e => { if (e.target === helpOverlay) toggleHelp(false); });
+  document.addEventListener('keydown', e => {
+    const tag = (e.target && e.target.tagName) || '';
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable);
+    if (e.key === 'Escape') {
+      if (helpOverlay && !helpOverlay.hidden) { toggleHelp(false); return; }
+      stopSpeech();
+      return;
+    }
+    if (typing || e.ctrlKey || e.altKey || e.metaKey) return;
+    const sk = currentSetKey();
+    switch (e.key) {
+      case '/': e.preventDefault(); if (sk) document.getElementById(`${sk}Search`)?.focus(); break;
+      case 'r': case 'R': if (sk) { e.preventDefault(); toggleRevealAll(sk); } break;
+      case 's': case 'S': e.preventDefault(); surpriseMe(sk || null); break;
+      case 'f': case 'F': e.preventDefault(); goTo('favorites'); break;
+      case 'g': case 'G': e.preventDefault(); goTo('games'); break;
+      case 'h': case 'H': e.preventDefault(); goTo('home'); break;
+      case '1': e.preventDefault(); goTo('set1'); break;
+      case '2': e.preventDefault(); goTo('set2'); break;
+      case '3': e.preventDefault(); goTo('games'); break;
+      case '4': e.preventDefault(); goTo('flashcards'); break;
+      case '5': e.preventDefault(); goTo('stats'); break;
+      case '?': e.preventDefault(); toggleHelp(); break;
+      default: break;
+    }
+  });
 
   /* ===================== Memory Match Game ===================== */
   const memGrid = document.getElementById('memoryGrid');
@@ -696,6 +1340,9 @@
     const perfect = quiz.score === quiz.questions.length;
     if (perfect) unlockBadge('perfect_quiz');
     if (quiz.mode === 'boss') { addXp(50); unlockBadge('boss_slayer'); }
+    progress.quizBest = progress.quizBest || {};
+    progress.quizBest[quiz.mode] = Math.max(Number(progress.quizBest[quiz.mode] || 0), quiz.score);
+    saveProgress();
     quizStage.innerHTML = `
       <div style="text-align:center; padding:20px 0;">
         <div class="neon-text" style="font-family:'Orbitron',sans-serif; font-size:28px;">${quiz.score} / ${quiz.questions.length}</div>
