@@ -1069,20 +1069,341 @@
   }
   function hideTyping() { document.getElementById('typingIndicator')?.remove(); }
 
-  function localAnswer(message) {
-    const all = [...SET1.saq, ...SET2.saq];
-    const mcAll = [...SET1.mcq, ...SET2.mcq].map(m => ({ q: m.q, a: `${'abcd'[m.correctIndex]}) ${m.options[m.correctIndex]} — ${m.explain || ''}` }));
-    const bank = [...all, ...mcAll];
-    const words = message.toLowerCase().match(/[a-z]{3,}/g) || [];
-    if (words.length === 0) return "Try asking with a keyword, like \"osmosis\" or \"cell wall\".";
-    let best = null, bestScore = 0;
-    bank.forEach(item => {
-      const hay = item.q.toLowerCase();
-      const score = words.reduce((s, w) => s + (hay.includes(w) ? 1 : 0), 0);
-      if (score > bestScore) { bestScore = score; best = item; }
+  const OFFLINE_GLOSSARY = [
+    {
+      term: 'Plasma membrane / cell membrane',
+      keywords: ['cell membrane', 'plasma membrane', 'fluid-mosaic model'],
+      answer: 'The plasma membrane is the thin boundary around the cell. It is described by the fluid-mosaic model because phospholipids and proteins can move within it, and it is selectively permeable so it controls what enters and leaves the cell.'
+    },
+    {
+      term: 'Phospholipid bilayer',
+      keywords: ['bilayer', 'hydrophilic heads', 'hydrophobic tails'],
+      answer: 'The membrane is made of two layers of phospholipids. Their hydrophilic heads face water, while the hydrophobic tails point inward away from water, forming a barrier that helps the membrane work properly.'
+    },
+    {
+      term: 'Membrane proteins',
+      keywords: ['channel proteins', 'carrier proteins', 'gatekeepers'],
+      answer: 'Membrane proteins help move substances across the membrane and allow cell communication. Some act like channels or carriers, while others function as receptors or enzymes.'
+    },
+    {
+      term: 'Selective permeability',
+      keywords: ['selectively permeable', 'semipermeable'],
+      answer: 'Selective permeability means the membrane allows some substances to pass through more easily than others. Small non-polar molecules move through more freely, while larger or charged substances often need proteins.'
+    },
+    {
+      term: 'Diffusion',
+      keywords: ['movement of particles', 'concentration gradient', 'passive transport'],
+      answer: 'Diffusion is the net movement of particles from a region of higher concentration to a region of lower concentration. It does not require energy and is one form of passive transport.'
+    },
+    {
+      term: 'Osmosis',
+      keywords: ['water movement', 'water moving', 'selectively permeable membrane'],
+      answer: 'Osmosis is the movement of water molecules across a selectively permeable membrane from a region of higher water concentration to lower water concentration. It is the specific form of diffusion for water.'
+    },
+    {
+      term: 'Active transport',
+      keywords: ['energy', 'ATP', 'against concentration gradient'],
+      answer: 'Active transport moves substances from lower concentration to higher concentration, so it goes against the concentration gradient. It requires energy, usually from ATP, and often uses membrane proteins.'
+    },
+    {
+      term: 'Passive transport',
+      keywords: ['diffusion', 'osmosis', 'no energy'],
+      answer: 'Passive transport is movement across a membrane without using cellular energy. Diffusion and osmosis are examples of passive transport.'
+    },
+    {
+      term: 'Concentration gradient',
+      keywords: ['gradient', 'higher concentration', 'lower concentration'],
+      answer: 'A concentration gradient is the difference in concentration between two regions. Many transport processes, especially diffusion and active transport, are described in terms of this difference.'
+    },
+    {
+      term: 'Hypotonic solution',
+      keywords: ['swell', 'burst', 'turgid'],
+      answer: 'A hypotonic solution has a lower solute concentration than the cell, so water tends to move into the cell by osmosis. Animal cells may swell, and plant cells become turgid.'
+    },
+    {
+      term: 'Hypertonic solution',
+      keywords: ['shrink', 'shrivel', 'plasmolysis'],
+      answer: 'A hypertonic solution has a higher solute concentration than the cell, so water moves out of the cell by osmosis. Plant cells may undergo plasmolysis, and animal cells can shrink.'
+    },
+    {
+      term: 'Isotonic solution',
+      keywords: ['same concentration', 'equal concentration'],
+      answer: 'An isotonic solution has about the same solute concentration as the cell. Water still moves in both directions, but there is no overall net movement.'
+    },
+    {
+      term: 'Plasmolysis',
+      keywords: ['shrink away from wall', 'hypertonic', 'loss of water'],
+      answer: 'Plasmolysis is the shrinkage of the cell contents away from the cell wall when a plant cell loses water in a hypertonic solution. The rigid wall remains in place while the membrane pulls away from it.'
+    },
+    {
+      term: 'Turgor / turgidity',
+      keywords: ['turgid', 'firm', 'water pressure'],
+      answer: 'Turgor, or turgidity, is the pressure of water pushing the cell membrane against the cell wall. It makes plant cells firm and helps support the plant.'
+    },
+    {
+      term: 'Plant cell wall',
+      keywords: ['cellulose', 'rigid', 'permeable'],
+      answer: 'The plant cell wall is a rigid outer layer outside the plasma membrane. It is made mainly of cellulose, gives the cell shape and support, and is freely permeable to many small substances.'
+    },
+    {
+      term: 'Cellulose',
+      keywords: ['plant wall', 'structural polysaccharide'],
+      answer: 'Cellulose is the main structural polysaccharide in plant cell walls. Its long fibers give the wall strength and rigidity.'
+    },
+    {
+      term: 'Prokaryote vs eukaryote',
+      keywords: ['prokaryotic', 'eukaryotic', 'nucleus', 'bacteria'],
+      answer: 'Prokaryotes do not have a nucleus or membrane-bound organelles, while eukaryotes do. Bacteria are prokaryotic; plant and animal cells are eukaryotic.'
+    },
+    {
+      term: 'Nanometre scale',
+      keywords: ['nanometre', 'nanometer', '1 nm', '0.000001 mm'],
+      answer: '1 nanometre equals 0.000001 mm, which is 1 × 10^-6 millimetres. The plasma membrane is only about 7–10 nm thick, so it needs an electron microscope to be seen clearly.'
+    },
+    {
+      term: 'Endocytosis',
+      keywords: ['vesicle', 'bringing materials in'],
+      answer: 'Endocytosis is the process by which a cell brings substances into the cell by folding the membrane inward to form a vesicle.'
+    },
+    {
+      term: 'Exocytosis',
+      keywords: ['vesicle', 'sending materials out'],
+      answer: 'Exocytosis is the process by which a cell releases substances outside the cell when vesicles fuse with the plasma membrane.'
+    }
+  ];
+
+  const OFFLINE_STOPWORDS = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'do', 'does', 'for', 'from', 'give', 'how', 'i', 'in', 'is', 'it', 'me', 'of', 'on', 'or', 'please', 'the', 'their', 'them', 'these', 'this', 'to', 'what', 'when', 'where', 'which', 'why', 'with', 'you', 'your'
+  ]);
+  const OFFLINE_SYNONYM_RULES = [
+    { pattern: /\bcell membrane\b/, terms: ['plasma membrane', 'selective permeability'] },
+    { pattern: /\bplasma membrane\b/, terms: ['cell membrane', 'selective permeability'] },
+    { pattern: /\bfluid mosaic\b/, terms: ['fluid-mosaic model', 'membrane proteins', 'phospholipid bilayer'] },
+    { pattern: /\bselectively permeable\b/, terms: ['semipermeable', 'selective permeability'] },
+    { pattern: /\bsemipermeable\b/, terms: ['selectively permeable', 'selective permeability'] },
+    { pattern: /\bwater movement\b/, terms: ['osmosis'] },
+    { pattern: /\bwater moving\b/, terms: ['osmosis'] },
+    { pattern: /\bwater moves\b/, terms: ['osmosis'] },
+    { pattern: /\bwater diffusion\b/, terms: ['osmosis'] },
+    { pattern: /\bosmotic\b/, terms: ['osmosis'] },
+    { pattern: /\bshrink\b/, terms: ['hypertonic', 'plasmolysis'] },
+    { pattern: /\bshrivel\b/, terms: ['hypertonic', 'plasmolysis'] },
+    { pattern: /\bplasmoly(?:sis|se)\b/, terms: ['plasmolysis', 'hypertonic'] },
+    { pattern: /\bswell\b/, terms: ['hypotonic', 'turgor', 'turgidity'] },
+    { pattern: /\bburst\b/, terms: ['hypotonic', 'turgor', 'turgidity'] },
+    { pattern: /\bturgid\b/, terms: ['turgor', 'turgidity', 'hypotonic'] },
+    { pattern: /\bconcentration gradient\b/, terms: ['gradient', 'diffusion', 'active transport'] },
+    { pattern: /\bactive transport\b/, terms: ['energy', 'atp'] },
+    { pattern: /\bpassive transport\b/, terms: ['diffusion', 'osmosis', 'no energy'] },
+    { pattern: /\bcell wall\b/, terms: ['cellulose', 'plant cell wall'] },
+    { pattern: /\bnanomet(?:re|er)\b/, terms: ['nanometre', '1 nm', '0.000001 mm'] },
+    { pattern: /\bnm\b/, terms: ['nanometre'] },
+    { pattern: /\bendocytosis\b/, terms: ['vesicle', 'bring in'] },
+    { pattern: /\bexocytosis\b/, terms: ['vesicle', 'release', 'send out'] },
+    { pattern: /\bprokaryot(?:e|ic)\b/, terms: ['prokaryote', 'prokaryotic', 'nucleus'] },
+    { pattern: /\beukaryot(?:e|ic)\b/, terms: ['eukaryote', 'eukaryotic', 'nucleus'] }
+  ];
+  let offlineKb = null;
+
+  function normalizeOfflineText(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[’']/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\bnanometer(?:s)?\b/g, 'nanometre')
+      .replace(/\bmicrometre(?:s)?\b/g, 'micrometre')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function tokenizeOfflineText(text) {
+    const normalized = normalizeOfflineText(text);
+    if (!normalized) return [];
+    return normalized.split(' ').filter(tok => tok && tok.length > 1 && !OFFLINE_STOPWORDS.has(tok));
+  }
+
+  function expandOfflineQuery(message) {
+    const normalized = normalizeOfflineText(message);
+    const tokens = new Set(tokenizeOfflineText(normalized));
+    for (const rule of OFFLINE_SYNONYM_RULES) {
+      if (rule.pattern.test(normalized)) {
+        rule.terms.forEach(term => tokenizeOfflineText(term).forEach(tok => tokens.add(tok)));
+      }
+    }
+    return { text: normalized, tokens: [...tokens] };
+  }
+
+  function tokenSimilarity(queryToken, entryToken) {
+    if (!queryToken || !entryToken) return 0;
+    if (queryToken === entryToken) return 1;
+    if (queryToken.length >= 3 && entryToken.length >= 3) {
+      if (entryToken.startsWith(queryToken) || queryToken.startsWith(entryToken)) return 0.85;
+      if (entryToken.includes(queryToken) || queryToken.includes(entryToken)) return 0.55;
+      if (entryToken.slice(0, 3) === queryToken.slice(0, 3)) return 0.4;
+    }
+    return 0;
+  }
+
+  function scoreField(queryTokens, fieldTokens, weight) {
+    if (!fieldTokens.length || !queryTokens.length) return 0;
+    let total = 0;
+    for (const queryToken of queryTokens) {
+      let best = 0;
+      for (const fieldToken of fieldTokens) {
+        const match = tokenSimilarity(queryToken, fieldToken);
+        if (match > best) best = match;
+        if (best === 1) break;
+      }
+      total += best * weight;
+    }
+    return total;
+  }
+
+  function buildOfflineKb() {
+    if (offlineKb) return offlineKb;
+    const entries = [];
+    const pushEntry = entry => entries.push(entry);
+
+    OFFLINE_GLOSSARY.forEach((item, index) => {
+      const termText = normalizeOfflineText(item.term);
+      const keywordText = normalizeOfflineText(item.keywords.join(' '));
+      const answerText = normalizeOfflineText(item.answer);
+      pushEntry({
+        id: `glossary-${index}`,
+        type: 'glossary',
+        title: item.term,
+        display: `${item.term}: ${item.answer}`,
+        searchText: normalizeOfflineText([item.term, ...item.keywords, item.answer].join(' ')),
+        termText,
+        keywordTexts: item.keywords.map(normalizeOfflineText),
+        questionTokens: tokenizeOfflineText(item.term),
+        keywordTokens: tokenizeOfflineText(keywordText),
+        answerTokens: tokenizeOfflineText(answerText),
+        explainTokens: [],
+        sourceLabel: 'Glossary'
+      });
     });
-    if (best && bestScore > 0) return `From the question bank:\n"${best.q}"\n→ ${best.a}`;
-    return "I couldn't find that in the question bank yet. Try a term like \"plasmolysis\", \"hypotonic\", or \"fluid-mosaic\".";
+
+    [
+      { source: 'Set 1', set: SET1 },
+      { source: 'Set 2', set: SET2 }
+    ].forEach(({ source, set }) => {
+      set.mcq.forEach((item, index) => {
+        const correctLetter = 'abcd'[item.correctIndex];
+        const correctText = item.options[item.correctIndex];
+        const answer = `(${correctLetter}) ${correctText}${item.explain ? ` — ${item.explain}` : ''}`;
+        const searchText = normalizeOfflineText([item.q, ...item.options, correctText, item.explain || '', source].join(' '));
+        pushEntry({
+          id: `${source.toLowerCase().replace(/\s+/g, '-')}-mcq-${index}`,
+          type: 'mcq',
+          title: item.q,
+          display: `From the question bank:\n"${item.q}"\n→ ${answer}`,
+          searchText,
+          termText: '',
+          keywordTexts: item.options.map(normalizeOfflineText),
+          questionTokens: tokenizeOfflineText([item.q, ...item.options, source].join(' ')),
+          keywordTokens: tokenizeOfflineText(item.options.join(' ')),
+          answerTokens: tokenizeOfflineText(answer),
+          explainTokens: tokenizeOfflineText(item.explain || ''),
+          sourceLabel: source
+        });
+      });
+
+      set.saq.forEach((item, index) => {
+        const answer = item.a;
+        const searchText = normalizeOfflineText([item.q, item.a, source].join(' '));
+        pushEntry({
+          id: `${source.toLowerCase().replace(/\s+/g, '-')}-saq-${index}`,
+          type: 'saq',
+          title: item.q,
+          display: `From the question bank:\n"${item.q}"\n→ ${answer}`,
+          searchText,
+          termText: '',
+          keywordTexts: [],
+          questionTokens: tokenizeOfflineText([item.q, source].join(' ')),
+          keywordTokens: [],
+          answerTokens: tokenizeOfflineText(answer),
+          explainTokens: [],
+          sourceLabel: source
+        });
+      });
+    });
+
+    offlineKb = entries;
+    return entries;
+  }
+
+  function scoreOfflineEntry(entry, query) {
+    let score = 0;
+    const queryText = query.text;
+    const queryTokens = query.tokens;
+
+    if (entry.termText && queryText.includes(entry.termText)) {
+      score += entry.type === 'glossary' ? 18 : 10;
+    }
+    for (const keywordText of entry.keywordTexts || []) {
+      if (keywordText && queryText.includes(keywordText)) {
+        score += entry.type === 'glossary' ? 9 : 5;
+      }
+    }
+
+    score += scoreField(queryTokens, entry.questionTokens, entry.type === 'glossary' ? 12 : 8);
+    score += scoreField(queryTokens, entry.keywordTokens, entry.type === 'glossary' ? 10 : 6);
+    score += scoreField(queryTokens, entry.answerTokens, entry.type === 'glossary' ? 7 : 6);
+    score += scoreField(queryTokens, entry.explainTokens, entry.type === 'glossary' ? 5 : 5);
+
+    if (query.definitionMode && entry.type === 'glossary') score *= 1.25;
+    if (query.definitionMode && entry.type !== 'glossary') score *= 0.92;
+
+    if (entry.type === 'glossary' && score > 0) {
+      const termHits = queryTokens.filter(qt => (entry.questionTokens || []).some(et => tokenSimilarity(qt, et) > 0)).length;
+      score += Math.min(6, termHits * 1.5);
+    }
+
+    return score;
+  }
+
+  function formatOfflineEntry(entry) {
+    return entry.display || entry.answer || entry.title || 'I found a possible match, but I could not format it cleanly.';
+  }
+
+  function localAnswer(message) {
+    const query = expandOfflineQuery(message);
+    const kb = buildOfflineKb();
+    if (query.tokens.length === 0) {
+      const examples = OFFLINE_GLOSSARY.slice(0, 5).map(item => item.term.toLowerCase()).join(', ');
+      return `Try asking about topics like ${examples}, or ask "What is osmosis?"`;
+    }
+
+    query.definitionMode = /\b(define|definition|what is|what's|whats|explain|describe|meaning of)\b/.test(query.text);
+
+    const ranked = kb
+      .map(entry => ({ entry, score: scoreOfflineEntry(entry, query) }))
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (ranked.length === 0) {
+      const examples = OFFLINE_GLOSSARY.slice(0, 5).map(item => item.term.toLowerCase()).join(', ');
+      return `I couldn't find a confident offline match, but I can help with ${examples}. Try asking about diffusion, osmosis, the cell wall, or plasmolysis.`;
+    }
+
+    const top = ranked[0];
+    const second = ranked[1];
+    const third = ranked[2];
+    const clearWinner = !second || top.score >= Math.max(9, second.score * 1.35) || (top.entry.type === 'glossary' && top.score >= second.score * 1.18 && top.score >= 12);
+
+    if (clearWinner) {
+      return formatOfflineEntry(top.entry);
+    }
+
+    const near = ranked.filter(item => item.score >= top.score * 0.72).slice(0, 3);
+    if (near.length <= 1) return formatOfflineEntry(top.entry);
+
+    const sections = near.map((item, index) => {
+      const body = formatOfflineEntry(item.entry);
+      return near.length > 1 ? `${index + 1}. ${body}` : body;
+    });
+    return `Here are the closest matches:\n${sections.join('\n\n')}`;
   }
 
   async function sendChat() {
