@@ -2,6 +2,46 @@
   "use strict";
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let activeSpeech = { btn: null, utterance: null };
+  function speak(text, btnEl) {
+    if (!('speechSynthesis' in window) || !text) return;
+    try {
+      if (btnEl && btnEl.classList.contains('speaking') && activeSpeech.btn === btnEl) {
+        window.speechSynthesis.cancel();
+        btnEl.classList.remove('speaking');
+        activeSpeech = { btn: null, utterance: null };
+        return;
+      }
+      if (activeSpeech.btn && activeSpeech.btn !== btnEl) activeSpeech.btn.classList.remove('speaking');
+      window.speechSynthesis.cancel();
+    } catch { /* speech unavailable or busy — ignore */ }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.95;
+    activeSpeech = { btn: btnEl || null, utterance };
+    utterance.onstart = () => {
+      if (activeSpeech.utterance === utterance && btnEl) btnEl.classList.add('speaking');
+    };
+    utterance.onend = () => {
+      if (activeSpeech.utterance === utterance) {
+        if (btnEl) btnEl.classList.remove('speaking');
+        activeSpeech = { btn: null, utterance: null };
+      }
+    };
+    utterance.onerror = () => {
+      if (activeSpeech.utterance === utterance) {
+        if (btnEl) btnEl.classList.remove('speaking');
+        activeSpeech = { btn: null, utterance: null };
+      }
+    };
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      if (btnEl) btnEl.classList.remove('speaking');
+      activeSpeech = { btn: null, utterance: null };
+    }
+  }
 
   /* ===================== Storage (localStorage — this is a real deployed site, not a Claude artifact, so this is safe & appropriate) ===================== */
   const STORE_KEY = 'g3_progress_v1';
@@ -366,21 +406,52 @@
       const ansEl = document.createElement('div'); ansEl.className = 'answer';
       ansEl.innerHTML = '';
       const ansLine = document.createElement('div');
-      ansLine.textContent = `Correct answer: ${'abcd'[item.correctIndex]}) ${item.options[item.correctIndex]}`;
+      const answerText = `The answer of this question is (${('abcd'[item.correctIndex])}) ${item.options[item.correctIndex]})`;
+      ansLine.textContent = answerText;
       const explainLine = document.createElement('div');
       explainLine.style.marginTop = '8px'; explainLine.style.color = 'var(--ink-dim)'; explainLine.style.fontSize = '13px';
       explainLine.textContent = item.explain || '';
+      const toolsEl = document.createElement('div'); toolsEl.className = 'qtools';
+      const speakQBtn = document.createElement('button');
+      speakQBtn.type = 'button';
+      speakQBtn.className = 'speak-btn';
+      speakQBtn.innerHTML = '<span class="speak-ic">🔊</span><span>Hear question</span>';
+      speakQBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        speak(item.q, speakQBtn);
+      });
+      const speakABtn = document.createElement('button');
+      speakABtn.type = 'button';
+      speakABtn.className = 'speak-btn answer-speak';
+      speakABtn.innerHTML = '<span class="speak-ic">🔈</span><span>Hear answer</span>';
+      speakABtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        revealCard(true);
+        const spokenAnswer = item.explain ? `${answerText}. Explanation: ${item.explain}` : answerText;
+        speak(spokenAnswer, speakABtn);
+      });
+      toolsEl.append(speakQBtn, speakABtn);
       ansEl.append(ansLine, explainLine);
 
-      card.append(numEl, diffTag, qEl, optsEl, ansEl);
-      card.addEventListener('click', () => {
+      function revealCard(force = false) {
         const wasRevealed = card.classList.contains('revealed');
+        if (force) {
+          if (!wasRevealed) {
+            card.classList.add('revealed');
+            optsEl.children[item.correctIndex].classList.add('is-correct');
+            if (markSeen(key)) { addXp(3); checkSetBadge(); }
+          }
+          return;
+        }
         card.classList.toggle('revealed');
         if (!wasRevealed) {
           optsEl.children[item.correctIndex].classList.add('is-correct');
           if (markSeen(key)) { addXp(3); checkSetBadge(); }
         }
-      });
+      }
+
+      card.append(numEl, diffTag, qEl, optsEl, ansEl, toolsEl);
+      card.addEventListener('click', () => revealCard());
       frag.appendChild(card);
       num++;
     });
@@ -391,13 +462,43 @@
       card.className = 'qcard';
       const numEl = document.createElement('span'); numEl.className = 'qnum'; numEl.textContent = `Question ${num}`;
       const qEl = document.createElement('div'); qEl.className = 'qtext'; qEl.textContent = item.q;
-      const ansEl = document.createElement('div'); ansEl.className = 'answer'; ansEl.textContent = `Answer: ${item.a}`;
-      card.append(numEl, qEl, ansEl);
-      card.addEventListener('click', () => {
+      const answerText = `The answer of this question is (${item.a})`;
+      const ansEl = document.createElement('div'); ansEl.className = 'answer'; ansEl.textContent = answerText;
+      const toolsEl = document.createElement('div'); toolsEl.className = 'qtools';
+      const speakQBtn = document.createElement('button');
+      speakQBtn.type = 'button';
+      speakQBtn.className = 'speak-btn';
+      speakQBtn.innerHTML = '<span class="speak-ic">🔊</span><span>Hear question</span>';
+      speakQBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        speak(item.q, speakQBtn);
+      });
+      const speakABtn = document.createElement('button');
+      speakABtn.type = 'button';
+      speakABtn.className = 'speak-btn answer-speak';
+      speakABtn.innerHTML = '<span class="speak-ic">🔈</span><span>Hear answer</span>';
+      speakABtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        revealCard(true);
+        speak(answerText, speakABtn);
+      });
+      toolsEl.append(speakQBtn, speakABtn);
+
+      function revealCard(force = false) {
         const wasRevealed = card.classList.contains('revealed');
+        if (force) {
+          if (!wasRevealed) {
+            card.classList.add('revealed');
+            if (markSeen(key)) { addXp(3); checkSetBadge(); }
+          }
+          return;
+        }
         card.classList.toggle('revealed');
         if (!wasRevealed && markSeen(key)) { addXp(3); checkSetBadge(); }
-      });
+      }
+
+      card.append(numEl, qEl, ansEl, toolsEl);
+      card.addEventListener('click', () => revealCard());
       frag.appendChild(card);
       num++;
     });
