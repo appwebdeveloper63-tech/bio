@@ -360,6 +360,22 @@
     stats: document.getElementById('screen-stats')
   };
   const topnav = document.getElementById('topnav');
+  const welcomeBtn = document.getElementById('welcomeBtn');
+  const welcomeSpeechText = 'Welcome to the Group 3 Science Assignment. Explore two full question sets, games, flashcards, and an AI study buddy. Tap any question to hear it read aloud. Press Next to begin.';
+  let welcomeSpeechPlayed = false;
+  let welcomeSpeechManuallyPlayed = false;
+
+  function playWelcomeSpeech(btnEl) {
+    welcomeSpeechPlayed = true;
+    speak(welcomeSpeechText, btnEl);
+  }
+
+  if (welcomeBtn) {
+    welcomeBtn.addEventListener('click', () => {
+      welcomeSpeechManuallyPlayed = true;
+      playWelcomeSpeech(welcomeBtn);
+    });
+  }
 
   function goTo(name) {
     Object.values(screens).forEach(s => s && s.classList.remove('active'));
@@ -371,7 +387,10 @@
     if (name === 'notes') renderNotes();
     sfx.click();
   }
-  document.getElementById('nextBtn').addEventListener('click', () => goTo('picker'));
+  document.getElementById('nextBtn').addEventListener('click', () => {
+    if (!welcomeSpeechPlayed && !welcomeSpeechManuallyPlayed) playWelcomeSpeech(welcomeBtn || undefined);
+    goTo('picker');
+  });
   document.querySelectorAll('[data-go]').forEach(el => el.addEventListener('click', () => goTo(el.dataset.go)));
   attachTilt('.set-card');
   attachTilt('.game-panel');
