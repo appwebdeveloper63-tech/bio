@@ -30,7 +30,7 @@ const PROVIDERS = [
 
   { key: 'OPENROUTER_API_KEY', name: 'openrouter',  kind: 'openai',
     baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    models: ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen3-235b-a22b:free'] },
+    models: ['meta-llama/llama-3.3-70b-instruct:free', 'meta-llama/llama-3.2-3b-instruct:free'] },
 
   { key: 'HF_API_KEY',         name: 'huggingface', kind: 'openai',
     baseUrl: 'https://router.huggingface.co/v1/chat/completions',
