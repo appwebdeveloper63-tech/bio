@@ -136,6 +136,7 @@
         quizBest: {},
         gameBest: {},
         gamesPlayed: 0,
+        chemDiscovered: [],
         dailyStreak: 0,
         lastVisit: '',
         setDone: {},
@@ -148,10 +149,11 @@
         quizBest: parsed.quizBest && typeof parsed.quizBest === 'object' ? parsed.quizBest : {},
         gameBest: parsed.gameBest && typeof parsed.gameBest === 'object' ? parsed.gameBest : {},
         gamesPlayed: Number.isFinite(parsed.gamesPlayed) ? parsed.gamesPlayed : 0,
+        chemDiscovered: Array.isArray(parsed.chemDiscovered) ? parsed.chemDiscovered : [],
         setDone: parsed.setDone && typeof parsed.setDone === 'object' ? parsed.setDone : {}
       };
     } catch {
-      return { xp: 0, badges: [], seenQuestions: [], bestMemoryMoves: null, maxStreak: 0, notes: [], flashStats: { gotIt: 0 }, favorites: [], theme: 'dark', speechRate: 1, voiceURI: '', quizBest: {}, gameBest: {}, gamesPlayed: 0, dailyStreak: 0, lastVisit: '', setDone: {} };
+      return { xp: 0, badges: [], seenQuestions: [], bestMemoryMoves: null, maxStreak: 0, notes: [], flashStats: { gotIt: 0 }, favorites: [], theme: 'dark', speechRate: 1, voiceURI: '', quizBest: {}, gameBest: {}, gamesPlayed: 0, chemDiscovered: [], dailyStreak: 0, lastVisit: '', setDone: {} };
     }
   }
   function saveProgress() {
@@ -502,6 +504,7 @@
     reference: document.getElementById('screen-reference'),
     notes: document.getElementById('screen-notes'),
     favorites: document.getElementById('screen-favorites'),
+    chemlab: document.getElementById('screen-chemlab'),
     stats: document.getElementById('screen-stats')
   };
   const topnav = document.getElementById('topnav');
@@ -538,6 +541,7 @@
     if (name === 'favorites') renderFavorites();
     if (name === 'set1') renderSetList('set1');
     if (name === 'set2') renderSetList('set2');
+    if (name === 'chemlab') refreshChemDiscovered();
     sfx.click();
   }
   document.getElementById('nextBtn').addEventListener('click', () => {
@@ -2871,7 +2875,213 @@
   chatSend.addEventListener('click', sendChat);
   chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
+  /* ===================== Virtual Chemist ===================== */
+  function initChemLab() {
+    const shelf = document.getElementById('chemShelf');
+    const beakerLiquid = document.getElementById('chemBeakerLiquid');
+    const beakerFx = document.getElementById('chemBeakerFx');
+    const beakerBench = document.getElementById('chemBench');
+    const chipRow = document.getElementById('chemChips');
+    const result = document.getElementById('chemResult');
+    if (!shelf || !beakerLiquid || !result) return;
+
+    const reagentById = {};
+    CHEM_REAGENTS.forEach(r => { reagentById[r.id] = r; });
+    let beaker = [];        // array of reagent ids currently in the beaker
+    const MAX_ITEMS = 4;
+
+    // --- Build the reagent shelf, grouped by state ---
+    const groups = [
+      ['solid', 'Solids'],
+      ['liquid', 'Liquids'],
+      ['gas', 'Gases']
+    ];
+    shelf.innerHTML = '';
+    groups.forEach(([state, label]) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'chem-group';
+      const h = document.createElement('h4');
+      h.textContent = label;
+      wrap.appendChild(h);
+      const row = document.createElement('div');
+      row.className = 'chem-reagents';
+      CHEM_REAGENTS.filter(r => r.state === state).forEach(r => {
+        const b = document.createElement('button');
+        b.className = 'chem-reagent';
+        b.type = 'button';
+        b.dataset.id = r.id;
+        b.innerHTML = `<span class="chem-emoji">${r.emoji}</span><span>${escapeHtml(r.name)}</span>`;
+        b.addEventListener('click', () => addReagent(r.id));
+        row.appendChild(b);
+      });
+      wrap.appendChild(row);
+      shelf.appendChild(wrap);
+    });
+
+    function addReagent(id) {
+      if (beaker.length >= MAX_ITEMS) { showToast('⚗️', 'Beaker is full — empty it first.'); return; }
+      if (beaker.includes(id)) { showToast('⚗️', 'Already added.'); return; }
+      beaker.push(id);
+      sfx.click();
+      renderBeaker();
+      react('mix');
+    }
+    function removeReagent(id) {
+      beaker = beaker.filter(x => x !== id);
+      renderBeaker();
+      if (beaker.length) react('mix'); else clearResult();
+    }
+    function emptyBeaker() {
+      beaker = [];
+      renderBeaker();
+      clearResult();
+      sfx.click();
+    }
+
+    function renderBeaker() {
+      chipRow.innerHTML = '';
+      beaker.forEach(id => {
+        const r = reagentById[id];
+        const chip = document.createElement('button');
+        chip.className = 'chem-chip';
+        chip.type = 'button';
+        chip.title = 'Remove';
+        chip.innerHTML = `${r.emoji} ${escapeHtml(r.name)} <span aria-hidden="true">✕</span>`;
+        chip.addEventListener('click', () => removeReagent(id));
+        chipRow.appendChild(chip);
+      });
+      // default beaker colour = blend of liquid/solid colours or empty
+      if (!beaker.length) {
+        beakerLiquid.style.height = '0%';
+        beakerFx.className = 'chem-fx';
+        beakerFx.innerHTML = '';
+        return;
+      }
+      const liquids = beaker.map(id => reagentById[id]).filter(r => r.state !== 'gas');
+      const col = liquids.length ? liquids[liquids.length - 1].color : '#dff0ff';
+      beakerLiquid.style.background = col;
+      beakerLiquid.style.height = beaker.some(id => reagentById[id].state !== 'gas') ? '55%' : '18%';
+    }
+
+    // condition rank: mix < heat < furnace
+    const RANK = { mix: 0, heat: 1, furnace: 2 };
+    function findReaction(action) {
+      const set = [...beaker].sort().join('+');
+      const level = RANK[action];
+      let best = null;
+      CHEM_REACTIONS.forEach(rx => {
+        if ([...rx.reagents].sort().join('+') !== set) return;
+        if (RANK[rx.condition] > level) return;              // needs stronger heat
+        if (!best || RANK[rx.condition] > RANK[best.condition]) best = rx;
+      });
+      // is there a reaction that would fire with more heat? (hint)
+      const pending = CHEM_REACTIONS.find(rx =>
+        [...rx.reagents].sort().join('+') === set && RANK[rx.condition] > level);
+      return { best, pending };
+    }
+
+    function clearResult() {
+      result.innerHTML = '<p class="chem-hint">Add reagents from the shelf, then Stir, Heat, or use the Furnace to see what happens.</p>';
+      beakerFx.className = 'chem-fx';
+      beakerFx.innerHTML = '';
+      beakerBench.classList.remove('is-hot');
+    }
+
+    function applyFx(rx) {
+      beakerFx.innerHTML = '';
+      beakerFx.className = 'chem-fx';
+      beakerBench.classList.toggle('is-hot', !!rx.glow || !!rx.flame);
+      if (rx.color) beakerLiquid.style.background = rx.color;
+      if (rx.bubbles) {
+        beakerFx.classList.add('has-bubbles');
+        for (let i = 0; i < 8; i++) {
+          const b = document.createElement('span');
+          b.className = 'chem-bubble';
+          b.style.left = (8 + Math.random() * 84) + '%';
+          b.style.animationDelay = (Math.random() * 1.2) + 's';
+          beakerFx.appendChild(b);
+        }
+      }
+      if (rx.smoke) beakerFx.classList.add('has-smoke');
+      if (rx.flame) beakerFx.classList.add('has-flame');
+      if (rx.precipitate) {
+        const p = document.createElement('span');
+        p.className = 'chem-precip';
+        p.style.background = rx.precipitate;
+        beakerFx.appendChild(p);
+      }
+    }
+
+    function react(action) {
+      if (!beaker.length) { clearResult(); return; }
+      const { best, pending } = findReaction(action);
+      if (best) {
+        applyFx(best);
+        if (best.flame || best.bubbles) sfx.correct(); else sfx.flip();
+        const isNoRxn = /no reaction/i.test(best.title);
+        const discovered = !isNoRxn && recordDiscovery(best.id);
+        result.innerHTML =
+          `<h3>${escapeHtml(best.title)}${discovered ? ' <span class="chem-new">NEW</span>' : ''}</h3>` +
+          `<p class="chem-eq">${escapeHtml(best.equation)}</p>` +
+          `<p>${escapeHtml(best.desc)}</p>` +
+          (best.danger ? '<p class="chem-danger">⚠️ Safety: this reaction is hazardous — done here only in simulation.</p>' : '');
+        if (best.flame || best.danger) burstConfetti();
+      } else {
+        beakerFx.className = 'chem-fx';
+        beakerFx.innerHTML = '';
+        beakerBench.classList.remove('is-hot');
+        let msg;
+        const hasWater = beaker.includes('water');
+        const solids = beaker.filter(id => reagentById[id].state === 'solid');
+        if (pending) {
+          msg = action === 'furnace'
+            ? 'Nothing more happens even in the furnace.'
+            : `Nothing yet — try ${RANK[pending.condition] === 2 ? 'the Furnace' : 'heating it'}.`;
+        } else if (hasWater && solids.length) {
+          msg = 'The solid just sits in the water — it is largely insoluble and no reaction occurs.';
+        } else if (beaker.length === 1) {
+          msg = 'A single substance on its own — add something else, or apply strong heat.';
+        } else {
+          msg = 'These substances mix but no obvious reaction takes place.';
+        }
+        result.innerHTML = `<h3>No visible reaction</h3><p>${escapeHtml(msg)}</p>`;
+      }
+    }
+
+    function recordDiscovery(id) {
+      progress.chemDiscovered = Array.isArray(progress.chemDiscovered) ? progress.chemDiscovered : [];
+      if (progress.chemDiscovered.includes(id)) return false;
+      progress.chemDiscovered.push(id);
+      addXp(5);
+      saveProgress();
+      refreshChemDiscovered();
+      if (progress.chemDiscovered.length >= 12) unlockBadge('chem_explorer');
+      showToast('⚗️', 'New reaction discovered! +5 XP');
+      return true;
+    }
+
+    document.getElementById('chemStir')?.addEventListener('click', () => react('mix'));
+    document.getElementById('chemHeat')?.addEventListener('click', () => react('heat'));
+    document.getElementById('chemFurnace')?.addEventListener('click', () => react('furnace'));
+    document.getElementById('chemEmpty')?.addEventListener('click', emptyBeaker);
+
+    renderBeaker();
+    clearResult();
+    refreshChemDiscovered();
+  }
+
+  function refreshChemDiscovered() {
+    const el = document.getElementById('chemDiscovered');
+    if (!el) return;
+    const n = Array.isArray(progress.chemDiscovered) ? progress.chemDiscovered.length : 0;
+    const total = (typeof CHEM_REACTIONS !== 'undefined')
+      ? CHEM_REACTIONS.filter(r => !/no reaction/i.test(r.title)).length
+      : 0;
+    el.textContent = `Reactions discovered: ${n} / ${total}`;
+  }
+
   /* ===================== Init ===================== */
   initNewGames();
+  initChemLab();
   refreshXpUI();
 })();

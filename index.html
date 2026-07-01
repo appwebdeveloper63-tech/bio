@@ -490,6 +490,46 @@ canvas#bgCanvas{
 /* ---------- Card tilt ---------- */
 .set-card, .game-panel{ will-change:transform; transition:transform 0.15s ease, box-shadow 0.25s ease; transform-style:preserve-3d; }
 
+/* ---------- Virtual Chemist ---------- */
+.chem-count{ color:var(--cyan); font-weight:600; margin:0 0 14px; }
+.chem-lab{ display:grid; grid-template-columns:minmax(240px,1fr) minmax(280px,1.2fr); gap:18px; align-items:start; }
+@media (max-width:760px){ .chem-lab{ grid-template-columns:1fr; } }
+.chem-shelf-wrap{ display:flex; flex-direction:column; gap:14px; }
+.chem-group h4{ margin:0 0 8px; color:var(--ink-dim); font-size:13px; text-transform:uppercase; letter-spacing:0.08em; }
+.chem-reagents{ display:flex; flex-wrap:wrap; gap:8px; }
+.chem-reagent{ display:flex; align-items:center; gap:6px; padding:7px 10px; border-radius:10px; border:1px solid var(--border);
+  background:var(--card); color:var(--ink); cursor:pointer; font-size:13px; font-family:inherit; transition:border-color .15s, box-shadow .15s; }
+.chem-reagent:hover{ border-color:var(--cyan); box-shadow:0 0 12px rgba(0,240,255,0.2); }
+.chem-emoji{ font-size:16px; }
+.chem-bench-wrap{ display:flex; flex-direction:column; align-items:center; gap:14px; }
+.chem-bench{ position:relative; width:200px; height:220px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; }
+.chem-beaker{ position:relative; width:150px; height:170px; border:3px solid rgba(255,255,255,0.35);
+  border-top:none; border-radius:0 0 26px 26px; overflow:hidden; background:rgba(255,255,255,0.03); }
+.chem-liquid{ position:absolute; left:0; right:0; bottom:0; transition:height .4s ease, background .4s ease; opacity:0.85; }
+.chem-fx{ position:absolute; inset:0; z-index:2; pointer-events:none; }
+.chem-flame-base{ width:70px; height:10px; border-radius:6px; background:#2a2f3a; margin-top:4px; }
+.chem-bench.is-hot .chem-flame-base{ background:linear-gradient(#ffb347,#ff5722); box-shadow:0 -6px 22px 4px rgba(255,120,0,0.7); animation:chemFlicker .3s infinite alternate; }
+@keyframes chemFlicker{ from{ opacity:0.75; } to{ opacity:1; } }
+.chem-fx.has-flame::after{ content:""; position:absolute; left:50%; bottom:0; width:60px; height:90px; transform:translateX(-50%);
+  background:radial-gradient(circle at 50% 90%, #fff3b0, #ff9800 45%, rgba(255,87,34,0) 75%); animation:chemFlicker .25s infinite alternate; }
+.chem-fx.has-smoke::before{ content:""; position:absolute; left:50%; top:-6px; width:60px; height:60px; transform:translateX(-50%);
+  background:radial-gradient(circle, rgba(180,180,180,0.5), rgba(180,180,180,0)); border-radius:50%; animation:chemRise 2s infinite ease-out; }
+@keyframes chemRise{ from{ transform:translate(-50%,10px); opacity:0.6; } to{ transform:translate(-50%,-30px); opacity:0; } }
+.chem-bubble{ position:absolute; bottom:6%; width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.85); animation:chemBubble 1.4s infinite ease-in; }
+@keyframes chemBubble{ 0%{ transform:translateY(0) scale(0.6); opacity:0; } 20%{ opacity:1; } 100%{ transform:translateY(-120px) scale(1); opacity:0; } }
+.chem-precip{ position:absolute; left:8%; right:8%; bottom:2%; height:26px; border-radius:0 0 20px 20px; opacity:0.85; }
+.chem-chips{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; min-height:20px; }
+.chem-chip{ display:flex; align-items:center; gap:5px; padding:5px 9px; border-radius:20px; border:1px solid var(--cyan);
+  background:rgba(0,240,255,0.08); color:var(--ink); cursor:pointer; font-size:12px; font-family:inherit; }
+.chem-controls{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+.chem-result{ width:100%; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px 16px; min-height:70px; }
+.chem-result h3{ margin:0 0 6px; color:var(--cyan); font-size:16px; }
+.chem-result p{ margin:4px 0; font-size:14px; line-height:1.5; }
+.chem-eq{ font-family:'Space Mono',monospace; color:var(--amber, #ffd166); font-weight:600; }
+.chem-hint{ color:var(--ink-dim); }
+.chem-danger{ color:#ff7a7a; font-weight:600; }
+.chem-new{ background:var(--green,#39d98a); color:#04211a; font-size:10px; padding:2px 6px; border-radius:6px; vertical-align:middle; }
+
 </style>
 </head>
 <body>
@@ -503,6 +543,7 @@ canvas#bgCanvas{
     <button class="navbtn" data-go="set1">Set 1</button>
     <button class="navbtn" data-go="set2">Set 2</button>
     <button class="navbtn" data-go="games">Games</button>
+    <button class="navbtn" data-go="chemlab">Chem Lab</button>
     <button class="navbtn" data-go="flashcards">Flashcards</button>
     <button class="navbtn" data-go="microscope">Microscope</button>
     <button class="navbtn" data-go="reference">Reference</button>
@@ -544,6 +585,10 @@ canvas#bgCanvas{
       <div class="set-card" data-go="microscope">
         <h3>Virtual Microscope</h3>
         <p>Focus &amp; zoom into 50 specimen types</p>
+      </div>
+      <div class="set-card" data-go="chemlab">
+        <h3>⚗️ Virtual Chemist</h3>
+        <p>Mix solids, liquids &amp; gases — stir, heat &amp; use the furnace</p>
       </div>
       <div class="set-card" data-go="flashcards">
         <h3>Flashcards</h3>
@@ -755,6 +800,37 @@ canvas#bgCanvas{
           <button class="btn btn-primary" id="generateFlashBtn">Generate flashcards</button>
         </div>
         <p style="font-size:11px; color:var(--ink-dim); margin-top:8px;">Only .txt files are read directly. PDFs/Word docs: open them and paste the text instead.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIRTUAL CHEMIST -->
+  <section class="screen" id="screen-chemlab">
+    <div class="qwrap" style="max-width:1000px;">
+      <div class="qhead">
+        <h2 class="neon-text">⚗️ Virtual Chemist</h2>
+        <span class="reveal-hint">Tap reagents to drop them in the beaker, then Stir, Heat or use the Furnace</span>
+      </div>
+      <p id="chemDiscovered" class="chem-count">Reactions discovered: 0 / 0</p>
+      <div class="chem-lab">
+        <div class="chem-shelf-wrap" id="chemShelf"></div>
+        <div class="chem-bench-wrap">
+          <div class="chem-bench" id="chemBench">
+            <div class="chem-beaker">
+              <div class="chem-fx" id="chemBeakerFx"></div>
+              <div class="chem-liquid" id="chemBeakerLiquid" style="height:0%"></div>
+            </div>
+            <div class="chem-flame-base"></div>
+          </div>
+          <div class="chem-chips" id="chemChips"></div>
+          <div class="chem-controls">
+            <button class="btn" id="chemStir">🥄 Stir</button>
+            <button class="btn" id="chemHeat">🔥 Heat</button>
+            <button class="btn" id="chemFurnace">🏭 Furnace</button>
+            <button class="btn" id="chemEmpty">🧹 Empty</button>
+          </div>
+          <div class="chem-result" id="chemResult"></div>
+        </div>
       </div>
     </div>
   </section>
