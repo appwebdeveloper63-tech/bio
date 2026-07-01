@@ -134,6 +134,8 @@
         speechRate: 1,
         voiceURI: '',
         quizBest: {},
+        gameBest: {},
+        gamesPlayed: 0,
         dailyStreak: 0,
         lastVisit: '',
         setDone: {},
@@ -144,10 +146,12 @@
         favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
         flashStats: parsed.flashStats && typeof parsed.flashStats === 'object' ? parsed.flashStats : { gotIt: 0 },
         quizBest: parsed.quizBest && typeof parsed.quizBest === 'object' ? parsed.quizBest : {},
+        gameBest: parsed.gameBest && typeof parsed.gameBest === 'object' ? parsed.gameBest : {},
+        gamesPlayed: Number.isFinite(parsed.gamesPlayed) ? parsed.gamesPlayed : 0,
         setDone: parsed.setDone && typeof parsed.setDone === 'object' ? parsed.setDone : {}
       };
     } catch {
-      return { xp: 0, badges: [], seenQuestions: [], bestMemoryMoves: null, maxStreak: 0, notes: [], flashStats: { gotIt: 0 }, favorites: [], theme: 'dark', speechRate: 1, voiceURI: '', quizBest: {}, dailyStreak: 0, lastVisit: '', setDone: {} };
+      return { xp: 0, badges: [], seenQuestions: [], bestMemoryMoves: null, maxStreak: 0, notes: [], flashStats: { gotIt: 0 }, favorites: [], theme: 'dark', speechRate: 1, voiceURI: '', quizBest: {}, gameBest: {}, gamesPlayed: 0, dailyStreak: 0, lastVisit: '', setDone: {} };
     }
   }
   function saveProgress() {
@@ -313,6 +317,29 @@
     return false;
   }
 
+  function updateStats() {
+    refreshXpUI();
+  }
+
+  function recordGameResult(gameId, score, higherIsBetter = true) {
+    progress.gameBest = progress.gameBest && typeof progress.gameBest === 'object' ? progress.gameBest : {};
+    progress.gamesPlayed = Number(progress.gamesPlayed || 0) + 1;
+    const current = Number(progress.gameBest[gameId]);
+    const next = Number(score) || 0;
+    const isNewBest = !Number.isFinite(current) || (higherIsBetter ? next > current : next < current);
+    if (isNewBest) {
+      progress.gameBest[gameId] = next;
+      saveProgress();
+      updateStats();
+      showToast('🏅', `New best in ${gameId.replace(/([A-Z])/g, ' $1').replace(/[-_]/g, ' ')}!`);
+      burstConfetti();
+    } else {
+      saveProgress();
+      updateStats();
+    }
+    return isNewBest;
+  }
+
   function refreshXpUI() {
     const lvl = levelFromXp(progress.xp);
     const pct = xpIntoLevel(progress.xp);
@@ -343,6 +370,7 @@
         ['Set 2 reviewed', `${seenSet2}/30`],
         ['Best memory moves', progress.bestMemoryMoves ?? '—'],
         ['Favorites', progress.favorites?.length || 0],
+        ['Games played', progress.gamesPlayed || 0],
         ['Badges earned', `${progress.badges.length}/${BADGES.length}`]
       ].forEach(([lbl, num]) => {
         const box = document.createElement('div');
@@ -1357,6 +1385,761 @@
     quizStage.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => startQuiz(b.dataset.mode)));
   }
 
+  /* ===================== Extra Games ===================== */
+  const GAME_BANK_MCQ = [
+    ...SET1.mcq.map((q, i) => ({ ...q, setKey: 'set1', bankIdx: i })),
+    ...SET2.mcq.map((q, i) => ({ ...q, setKey: 'set2', bankIdx: i }))
+  ];
+  const GAME_TERMS_POOL = GAME_TERMS.terms;
+  const GAME_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+  function bindGameRestart(btnId, handler) {
+    const btn = document.getElementById(btnId);
+    if (!btn || btn.dataset.bound) return btn;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', handler);
+    return btn;
+  }
+
+  function pickMany(arr, count) {
+    return shuffleCopy([...arr]).slice(0, Math.min(count, arr.length));
+  }
+
+  function createSummaryBox(title, body) {
+    return `<div class="game-summary"><strong>${title}</strong><div>${body}</div></div>`;
+  }
+
+  /* ---------- 1. True/False Blitz ---------- */
+  let tfBlitzState = null;
+  function initTrueFalseBlitz() {
+    const root = document.getElementById('tfBlitzRoot');
+    if (!root) return;
+    const restart = () => {
+      clearInterval(tfBlitzState?.timer);
+      tfBlitzState = {
+        deck: shuffleCopy([...GAME_TERMS.tfStatements]),
+        idx: 0,
+        score: 0,
+        remaining: 60,
+        locked: false,
+        timer: null,
+        finished: false
+      };
+      renderTfBlitz();
+      tfBlitzState.timer = setInterval(() => {
+        tfBlitzState.remaining -= 1;
+        const timer = document.getElementById('tfBlitzTimer');
+        if (timer) timer.textContent = `${tfBlitzState.remaining}s`;
+        if (tfBlitzState.remaining <= 0) finishTfBlitz();
+      }, 1000);
+    };
+    function renderTfBlitz(message = '') {
+      const q = tfBlitzState.deck[tfBlitzState.idx % tfBlitzState.deck.length];
+      root.innerHTML = `
+        <div class="mini-status"><span id="tfBlitzTimer">${tfBlitzState.remaining}s</span> · Score <span id="tfBlitzScore">${tfBlitzState.score}</span></div>
+        <div class="game-qa" id="tfBlitzQuestion">${escapeHtml(q.text)}</div>
+        <div class="mode-row" style="margin-top:12px;">
+          <button type="button" class="mode-btn" id="tfTrueBtn">True</button>
+          <button type="button" class="mode-btn" id="tfFalseBtn">False</button>
+        </div>
+        <div class="game-feedback" id="tfBlitzFeedback">${message}</div>
+      `;
+      document.getElementById('tfTrueBtn')?.addEventListener('click', () => answer(true));
+      document.getElementById('tfFalseBtn')?.addEventListener('click', () => answer(false));
+    }
+    function answer(choice) {
+      if (tfBlitzState.locked || tfBlitzState.finished) return;
+      tfBlitzState.locked = true;
+      const q = tfBlitzState.deck[tfBlitzState.idx % tfBlitzState.deck.length];
+      const correct = choice === q.answer;
+      if (correct) {
+        tfBlitzState.score += 1;
+        addXp(2);
+        if (tfBlitzState.score >= 20) unlockBadge('blitz_20');
+        tone(660, 0.09, 'sine', 0.07);
+      } else {
+        tone(180, 0.14, 'sawtooth', 0.06);
+      }
+      const fb = document.getElementById('tfBlitzFeedback');
+      if (fb) fb.textContent = `${correct ? 'Correct.' : 'Not quite.'} ${q.why}`;
+      const scoreEl = document.getElementById('tfBlitzScore');
+      if (scoreEl) scoreEl.textContent = tfBlitzState.score;
+      tfBlitzState.idx += 1;
+      setTimeout(() => { if (!tfBlitzState.finished) { tfBlitzState.locked = false; renderTfBlitz(); } }, 950);
+    }
+    function finishTfBlitz() {
+      if (tfBlitzState.finished) return;
+      tfBlitzState.finished = true;
+      clearInterval(tfBlitzState.timer);
+      recordGameResult('tfBlitz', tfBlitzState.score, true);
+      if (tfBlitzState.score >= 20) unlockBadge('blitz_20');
+      root.innerHTML = `${createSummaryBox('Final score', `${tfBlitzState.score} correct in 60 seconds.`)}<button type="button" class="btn btn-primary" id="tfBlitzAgain">Play again</button>`;
+      document.getElementById('tfBlitzAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('tfBlitzRestart', restart);
+    restart();
+  }
+
+  /* ---------- 2. Word Scramble ---------- */
+  let scrambleState = null;
+  function initWordScramble() {
+    const root = document.getElementById('scrambleRoot');
+    if (!root) return;
+    const restart = () => {
+      scrambleState = { solved: 0, round: 0, total: 10, current: null };
+      nextScramble();
+    };
+    function nextScramble() {
+      if (scrambleState.round >= scrambleState.total) return finishScramble();
+      scrambleState.current = GAME_TERMS_POOL[Math.floor(Math.random() * GAME_TERMS_POOL.length)];
+      scrambleState.scrambled = shuffleCopy(scrambleState.current.term.replace(/[^A-Za-z]/g, '').split('')).join('');
+      scrambleState.round += 1;
+      renderScramble('');
+    }
+    function renderScramble(message) {
+      root.innerHTML = `
+        <div class="mini-status">Round ${scrambleState.round}/${scrambleState.total} · Solved ${scrambleState.solved}</div>
+        <div class="game-hint">${escapeHtml(scrambleState.current.def)}</div>
+        <div class="game-qa scramble-word">${escapeHtml(scrambleState.scrambled)}</div>
+        <input id="scrambleInput" class="settings-select" type="text" placeholder="Type the term...">
+        <div class="mode-row" style="margin-top:10px;">
+          <button type="button" class="mode-btn" id="scrambleCheck">Check</button>
+          <button type="button" class="mode-btn" id="scrambleSkip">Skip</button>
+        </div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const input = document.getElementById('scrambleInput');
+      input?.focus();
+      document.getElementById('scrambleCheck')?.addEventListener('click', () => {
+        const guess = normalizeSearchText(input.value);
+        const target = normalizeSearchText(scrambleState.current.term);
+        if (guess === target) {
+          scrambleState.solved += 1;
+          addXp(4);
+          tone(620, 0.08, 'triangle', 0.07);
+          renderScramble(`Correct — ${scrambleState.current.term}`);
+          setTimeout(nextScramble, 700);
+        } else {
+          tone(220, 0.12, 'square', 0.05);
+          renderScramble(`Try again. Hint: ${scrambleState.current.category}`);
+        }
+      });
+      document.getElementById('scrambleSkip')?.addEventListener('click', () => nextScramble());
+    }
+    function finishScramble() {
+      recordGameResult('scramble', scrambleState.solved, true);
+      root.innerHTML = `${createSummaryBox('Word Scramble complete', `${scrambleState.solved} of ${scrambleState.total} solved.`)}<button type="button" class="btn btn-primary" id="scrambleAgain">New round</button>`;
+      document.getElementById('scrambleAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('scrambleRestart', restart);
+    restart();
+  }
+
+  /* ---------- 3. Hangman ---------- */
+  let hangmanState = null;
+  function initHangman() {
+    const root = document.getElementById('hangmanRoot');
+    if (!root) return;
+    const restart = () => {
+      const pool = GAME_TERMS_POOL.filter(t => /^[A-Za-z ]+$/.test(t.term));
+      const term = pool[Math.floor(Math.random() * pool.length)] || GAME_TERMS_POOL[0];
+      hangmanState = { term, guessed: new Set(), wrong: 0, solved: false };
+      renderHangman('');
+    };
+    function maskedTerm() {
+      return hangmanState.term.term.split('').map(ch => /[A-Za-z]/.test(ch) && !hangmanState.guessed.has(ch.toUpperCase()) ? '•' : ch).join(' ');
+    }
+    function renderHangman(message) {
+      root.innerHTML = `
+        <div class="mini-status">Wrong left: ${6 - hangmanState.wrong}</div>
+        <div class="game-hint">${escapeHtml(hangmanState.term.def)}</div>
+        <div class="game-qa hangman-word">${escapeHtml(maskedTerm())}</div>
+        <div class="hangman-letters" id="hangmanLetters"></div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const letters = document.getElementById('hangmanLetters');
+      GAME_LETTERS.forEach(letter => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mini-btn';
+        b.textContent = letter;
+        b.disabled = hangmanState.guessed.has(letter) || hangmanState.solved;
+        b.addEventListener('click', () => pickLetter(letter));
+        letters.appendChild(b);
+      });
+    }
+    function finish(win) {
+      hangmanState.solved = true;
+      const score = win ? (6 - hangmanState.wrong) : 0;
+      recordGameResult('hangman', score, true);
+      if (win) addXp(10);
+      root.innerHTML = `${createSummaryBox(win ? 'You solved it!' : 'Hangman over', `${hangmanState.term.term}. ${hangmanState.term.def}`)}<button type="button" class="btn btn-primary" id="hangmanAgain">New word</button>`;
+      document.getElementById('hangmanAgain')?.addEventListener('click', restart);
+    }
+    function pickLetter(letter) {
+      if (hangmanState.solved) return;
+      hangmanState.guessed.add(letter);
+      if (hangmanState.term.term.toUpperCase().includes(letter)) {
+        tone(680, 0.06, 'sine', 0.07);
+      } else {
+        hangmanState.wrong += 1;
+        tone(160, 0.1, 'sawtooth', 0.05);
+      }
+      const solved = hangmanState.term.term.split('').every(ch => !/[A-Za-z]/.test(ch) || hangmanState.guessed.has(ch.toUpperCase()));
+      if (solved) {
+        finish(true);
+      } else if (hangmanState.wrong >= 6) {
+        finish(false);
+      } else {
+        renderHangman(correct ? 'Nice guess.' : 'Wrong guess.');
+      }
+    }
+    bindGameRestart('hangmanRestart', restart);
+    restart();
+  }
+
+  /* ---------- 4. Odd One Out ---------- */
+  let oddState = null;
+  function initOddOneOut() {
+    const root = document.getElementById('oddOneRoot');
+    if (!root) return;
+    const restart = () => {
+      oddState = { rounds: shuffleCopy([...GAME_TERMS.oddGroups]).slice(0, 10), idx: 0, score: 0 };
+      renderOddOneOut('');
+    };
+    function renderOddOneOut(message) {
+      if (oddState.idx >= oddState.rounds.length) return finishOdd();
+      const item = oddState.rounds[oddState.idx];
+      root.innerHTML = `
+        <div class="mini-status">Round ${oddState.idx + 1}/${oddState.rounds.length} · Score ${oddState.score}</div>
+        <div class="game-qa">Which one is the odd one out?</div>
+        <div class="odd-grid" id="oddGrid"></div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const grid = document.getElementById('oddGrid');
+      item.items.forEach((label, idx) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'opt odd-btn';
+        b.textContent = label;
+        b.addEventListener('click', () => choose(idx));
+        grid.appendChild(b);
+      });
+      function choose(idx) {
+        const ok = idx === item.odd;
+        if (ok) {
+          oddState.score += 1;
+          addXp(2);
+          tone(650, 0.08, 'triangle', 0.07);
+        } else tone(180, 0.08, 'square', 0.05);
+        root.querySelector('.game-feedback').textContent = item.why;
+        setTimeout(() => { oddState.idx += 1; renderOddOneOut(''); }, 900);
+      }
+    }
+    function finishOdd() {
+      recordGameResult('oddOneOut', oddState.score, true);
+      root.innerHTML = `${createSummaryBox('Odd One Out complete', `${oddState.score}/${oddState.rounds.length} correct.`)}<button type="button" class="btn btn-primary" id="oddAgain">New round</button>`;
+      document.getElementById('oddAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('oddOneRestart', restart);
+    restart();
+  }
+
+  /* ---------- 5. Fill-in-the-Blank ---------- */
+  let clozeState = null;
+  function initClozeGame() {
+    const root = document.getElementById('clozeRoot');
+    if (!root) return;
+    const restart = () => {
+      clozeState = { rounds: shuffleCopy([...GAME_TERMS.cloze]).slice(0, 10), idx: 0, score: 0 };
+      renderCloze('');
+    };
+    function renderCloze(message) {
+      if (clozeState.idx >= clozeState.rounds.length) return finishCloze();
+      const item = clozeState.rounds[clozeState.idx];
+      root.innerHTML = `
+        <div class="mini-status">Round ${clozeState.idx + 1}/${clozeState.rounds.length} · Score ${clozeState.score}</div>
+        <div class="game-qa">${escapeHtml(item.sentence)}</div>
+        <div class="mode-row" id="clozeOpts"></div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const opts = document.getElementById('clozeOpts');
+      shuffleCopy([...item.options]).forEach(opt => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-btn';
+        b.textContent = opt;
+        b.addEventListener('click', () => pick(opt));
+        opts.appendChild(b);
+      });
+      function pick(opt) {
+        const ok = normalizeSearchText(opt) === normalizeSearchText(item.answer);
+        if (ok) {
+          clozeState.score += 1;
+          addXp(2);
+          tone(660, 0.07, 'sine', 0.06);
+        } else tone(170, 0.08, 'sawtooth', 0.05);
+        root.querySelector('.game-feedback').textContent = `${ok ? 'Correct.' : 'Nope.'} ${item.answer}.`;
+        setTimeout(() => { clozeState.idx += 1; renderCloze(''); }, 850);
+      }
+    }
+    function finishCloze() {
+      recordGameResult('clozeGame', clozeState.score, true);
+      root.innerHTML = `${createSummaryBox('Fill-in-the-Blank complete', `${clozeState.score}/${clozeState.rounds.length} correct.`)}<button type="button" class="btn btn-primary" id="clozeAgain">New round</button>`;
+      document.getElementById('clozeAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('clozeRestart', restart);
+    restart();
+  }
+
+  /* ---------- 6. Millionaire Ladder ---------- */
+  let millionaireState = null;
+  function initMillionaireLadder() {
+    const root = document.getElementById('millionaireRoot');
+    if (!root) return;
+    const bank = shuffleCopy([...GAME_BANK_MCQ]).sort((a, b) => {
+      const order = { easy: 0, medium: 1, hard: 2 };
+      return order[a.difficulty] - order[b.difficulty];
+    }).slice(0, 15);
+    const restart = () => {
+      millionaireState = { qIdx: 0, rung: 0, lifeline: true, bank: shuffleCopy([...bank]), used50: false, removed: new Set(), finished: false };
+      renderMillionaire();
+    };
+    function renderMillionaire(message = '') {
+      if (millionaireState.finished) return;
+      const q = millionaireState.bank[millionaireState.qIdx];
+      const opts = q.options.map((opt, idx) => ({ opt, idx }));
+      const visible = opts.filter(o => !millionaireState.removed.has(o.idx));
+      root.innerHTML = `
+        <div class="mini-status">Rung ${millionaireState.rung}/15 · Lifeline ${millionaireState.used50 ? 'used' : 'ready'}</div>
+        <div class="game-qa">${escapeHtml(q.q)}</div>
+        <div class="mode-row" style="margin-bottom:8px;">
+          <button class="mode-btn" id="millionaire5050" ${millionaireState.used50 ? 'disabled' : ''}>50:50</button>
+        </div>
+        <div class="mode-row" id="millionaireOpts"></div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const optsWrap = document.getElementById('millionaireOpts');
+      visible.forEach(({ opt, idx }) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-btn';
+        b.textContent = `${'ABCD'[idx]}) ${opt}`;
+        if (millionaireState.removed.has(idx)) b.disabled = true;
+        b.addEventListener('click', () => pick(idx));
+        optsWrap.appendChild(b);
+      });
+      document.getElementById('millionaire5050')?.addEventListener('click', () => {
+        if (millionaireState.used50) return;
+        millionaireState.used50 = true;
+        const wrong = [0,1,2,3].filter(i => i !== q.correctIndex);
+        shuffleCopy(wrong).slice(0,2).forEach(i => millionaireState.removed.add(i));
+        renderMillionaire('50:50 used — two wrong answers removed.');
+      });
+      function pick(idx) {
+        if (idx !== q.correctIndex) return endMillionaire(false, `Wrong answer. The correct one was ${'ABCD'[q.correctIndex]}.`);
+        millionaireState.rung += 1;
+        millionaireState.qIdx += 1;
+        addXp(4);
+        if (millionaireState.rung >= 15) return endMillionaire(true, 'You reached the top!');
+        millionaireState.removed.clear();
+        renderMillionaire('Correct! Climb higher.');
+      }
+    }
+    function endMillionaire(win, message) {
+      millionaireState.finished = true;
+      recordGameResult('millionaire', millionaireState.rung, true);
+      if (win) {
+        unlockBadge('millionaire_win');
+        burstConfetti();
+      }
+      root.innerHTML = `${createSummaryBox(win ? 'Millionaire complete' : 'Run over', `${message}<br>Highest rung: ${millionaireState.rung}/15`)}<button type="button" class="btn btn-primary" id="millionaireAgain">Play again</button>`;
+      document.getElementById('millionaireAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('millionaireRestart', restart);
+    restart();
+  }
+
+  /* ---------- 7. Cell Osmosis Lab ---------- */
+  let osmosisState = null;
+  function initOsmosisLab() {
+    const root = document.getElementById('osmosisRoot');
+    if (!root) return;
+    const cases = [
+      { cell: 'Animal', sol: 'Hypotonic', outcome: 'bursts/lyses', why: 'Water enters an animal cell and it can burst.' },
+      { cell: 'Animal', sol: 'Isotonic', outcome: 'no change', why: 'Water moves equally in both directions.' },
+      { cell: 'Animal', sol: 'Hypertonic', outcome: 'shrinks', why: 'Water leaves the cell and it shrivels.' },
+      { cell: 'Plant', sol: 'Hypotonic', outcome: 'turgid', why: 'The vacuole fills and turgor pressure rises.' },
+      { cell: 'Plant', sol: 'Isotonic', outcome: 'no change', why: 'There is no net water movement.' },
+      { cell: 'Plant', sol: 'Hypertonic', outcome: 'plasmolysis', why: 'Water leaves and the membrane pulls from the wall.' }
+    ];
+    const restart = () => {
+      osmosisState = { score: 0, round: 0, total: 10, current: null };
+      newOsmosisCase();
+    };
+    function newOsmosisCase() {
+      if (osmosisState.round >= osmosisState.total) return finishOsmosis();
+      osmosisState.current = cases[Math.floor(Math.random() * cases.length)];
+      osmosisState.round += 1;
+      renderOsmosis('');
+    }
+    function lookupOutcome(cell, sol) {
+      return (cases.find(c => c.cell === cell && c.sol === sol) || cases[0]).outcome;
+    }
+
+    function renderOsmosis(message) {
+      const current = osmosisState.current || cases[0];
+      root.innerHTML = `
+        <div class="mini-status">Case ${osmosisState.round}/${osmosisState.total} · Score ${osmosisState.score}</div>
+        <div class="mode-row">
+          <select id="osmosisCell" class="settings-select"><option>Animal</option><option>Plant</option></select>
+          <select id="osmosisSol" class="settings-select"><option>Hypotonic</option><option>Isotonic</option><option>Hypertonic</option></select>
+        </div>
+        <div class="game-qa">Scenario: ${current.cell} cell in a ${current.sol.toLowerCase()} solution. Predict the outcome.</div>
+        <div class="mode-row" id="osmosisChoices"></div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const cellSelect = document.getElementById('osmosisCell');
+      const solSelect = document.getElementById('osmosisSol');
+      cellSelect.value = current.cell;
+      solSelect.value = current.sol;
+      const selectedCell = cellSelect.value;
+      const selectedSol = solSelect.value;
+      cellSelect?.addEventListener('change', () => renderOsmosis(''));
+      solSelect?.addEventListener('change', () => renderOsmosis(''));
+      const optionPool = ['bursts/lyses', 'shrinks', 'turgid', 'plasmolysis', 'no change'];
+      const correct = lookupOutcome(selectedCell, selectedSol);
+      const options = shuffleCopy([correct, ...shuffleCopy(optionPool.filter(opt => opt !== correct)).slice(0, 3)]);
+      options.forEach(opt => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-btn';
+        b.textContent = opt;
+        b.addEventListener('click', () => check(opt));
+        document.getElementById('osmosisChoices').appendChild(b);
+      });
+      function check(opt) {
+        const cell = cellSelect.value;
+        const sol = solSelect.value;
+        const lookup = cases.find(c => c.cell === cell && c.sol === sol);
+        const ok = lookup && lookup.outcome === opt;
+        if (ok) {
+          osmosisState.score += 1;
+          addXp(2);
+          tone(650, 0.08, 'triangle', 0.06);
+        } else tone(190, 0.08, 'sawtooth', 0.05);
+        root.querySelector('.game-feedback').textContent = `${ok ? 'Correct.' : 'Not quite.'} ${lookup.why}`;
+        setTimeout(newOsmosisCase, 900);
+      }
+    }
+    function finishOsmosis() {
+      recordGameResult('osmosisLab', osmosisState.score, true);
+      if (osmosisState.score >= osmosisState.total) unlockBadge('osmosis_ace');
+      root.innerHTML = `${createSummaryBox('Osmosis Lab complete', `${osmosisState.score}/${osmosisState.total} correct.`)}<button type="button" class="btn btn-primary" id="osmosisAgain">New lab</button>`;
+      document.getElementById('osmosisAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('osmosisRestart', restart);
+    restart();
+  }
+
+  /* ---------- 8. Term-Definition Match ---------- */
+  let termMatchState = null;
+  function initTermMatch() {
+    const root = document.getElementById('termMatchRoot');
+    if (!root) return;
+    const poolMap = new Map();
+    [...MEMORY_PAIRS.map(([term, def]) => ({ term, def })), ...GAME_TERMS_POOL.map(item => ({ term: item.term, def: item.def }))].forEach(item => poolMap.set(normalizeSearchText(item.term), item));
+    const pool = [...poolMap.values()];
+    const restart = () => {
+      termMatchState = {
+        pairs: pickMany(pool, 6),
+        pickedTerm: null,
+        matched: new Set(),
+        start: performance.now(),
+        timer: null,
+        bestTime: null
+      };
+      renderTermMatch();
+      termMatchState.timer = setInterval(updateTermClock, 250);
+    };
+    function elapsed() { return (performance.now() - termMatchState.start) / 1000; }
+    function updateTermClock() {
+      const el = document.getElementById('termMatchClock');
+      if (el) el.textContent = `${elapsed().toFixed(1)}s`;
+    }
+    function renderTermMatch(message = '') {
+      const defs = shuffleCopy(termMatchState.pairs.map(p => p.def));
+      root.innerHTML = `
+        <div class="mini-status">Time <span id="termMatchClock">0.0s</span></div>
+        <div class="term-match-board">
+          <div class="term-match-col" id="termCol"></div>
+          <div class="term-match-col" id="defCol"></div>
+        </div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const termCol = document.getElementById('termCol');
+      const defCol = document.getElementById('defCol');
+      termMatchState.pairs.forEach(pair => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-btn term-pill';
+        b.textContent = pair.term;
+        b.disabled = termMatchState.matched.has(pair.term);
+        b.addEventListener('click', () => termPick(pair));
+        termCol.appendChild(b);
+      });
+      defs.forEach(def => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-btn term-pill def-pill';
+        b.textContent = def;
+        b.disabled = [...termMatchState.matched].some(term => termMatchState.pairs.find(p => p.term === term)?.def === def);
+        b.addEventListener('click', () => defPick(def));
+        defCol.appendChild(b);
+      });
+      updateTermClock();
+    }
+    function flashTermFeedback(text, good) {
+      root.querySelector('.game-feedback').textContent = text;
+      tone(good ? 620 : 180, 0.08, good ? 'sine' : 'sawtooth', 0.06);
+    }
+    function termPick(pair) { termMatchState.pickedTerm = pair; flashTermFeedback(`Picked: ${pair.term}. Now choose the matching definition.`, true); }
+    function defPick(def) {
+      if (!termMatchState.pickedTerm) return;
+      const picked = termMatchState.pickedTerm;
+      const ok = picked.def === def;
+      if (ok) {
+        termMatchState.matched.add(picked.term);
+        addXp(2);
+        flashTermFeedback(`Matched ${picked.term}.`, true);
+      } else {
+        flashTermFeedback('Wrong pair. Try again.', false);
+      }
+      termMatchState.pickedTerm = null;
+      if (termMatchState.matched.size >= termMatchState.pairs.length) return finishTermMatch();
+      setTimeout(() => renderTermMatch(''), 450);
+    }
+    function finishTermMatch() {
+      clearInterval(termMatchState.timer);
+      const time = elapsed();
+      recordGameResult('termMatch', time, false);
+      root.innerHTML = `${createSummaryBox('Match complete', `Finished in ${time.toFixed(1)} seconds.`)}<button type="button" class="btn btn-primary" id="termMatchAgain">New round</button>`;
+      document.getElementById('termMatchAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('termMatchRestart', restart);
+    restart();
+  }
+
+  /* ---------- 9. Flash Recall Sprint ---------- */
+  let sprintState = null;
+  function initFlashSprint() {
+    const root = document.getElementById('flashSprintRoot');
+    if (!root) return;
+    const restart = () => {
+      sprintState = { score: 0, combo: 1, remaining: 60, deck: shuffleCopy([...GAME_BANK_MCQ]), idx: 0, timer: null, active: true };
+      renderSprint();
+      sprintState.timer = setInterval(() => {
+        sprintState.remaining -= 1;
+        const timer = document.getElementById('flashSprintTimer');
+        if (timer) timer.textContent = `${sprintState.remaining}s`;
+        if (sprintState.remaining <= 0) finishSprint();
+      }, 1000);
+    };
+    function nextQuestion() {
+      sprintState.idx = (sprintState.idx + 1) % sprintState.deck.length;
+      renderSprint();
+    }
+    function renderSprint(message = '') {
+      const q = sprintState.deck[sprintState.idx];
+      root.innerHTML = `
+        <div class="mini-status">Time <span id="flashSprintTimer">${sprintState.remaining}s</span> · Score ${sprintState.score} · Combo ×${sprintState.combo}</div>
+        <div class="game-qa">${escapeHtml(q.q)}</div>
+        <div class="mode-row" id="sprintOpts"></div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const wrap = document.getElementById('sprintOpts');
+      q.options.forEach((opt, idx) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mode-btn';
+        b.textContent = `${'ABCD'[idx]}) ${opt}`;
+        b.addEventListener('click', () => pick(idx));
+        wrap.appendChild(b);
+      });
+      function pick(idx) {
+        const ok = idx === q.correctIndex;
+        if (ok) {
+          sprintState.score += sprintState.combo;
+          sprintState.combo += 1;
+          addXp(2);
+          tone(640, 0.06, 'triangle', 0.06);
+        } else {
+          sprintState.combo = 1;
+          tone(160, 0.08, 'sawtooth', 0.05);
+        }
+        root.querySelector('.game-feedback').textContent = q.explain || '';
+        setTimeout(nextQuestion, 650);
+      }
+    }
+    function finishSprint() {
+      sprintState.active = false;
+      clearInterval(sprintState.timer);
+      recordGameResult('flashSprint', sprintState.score, true);
+      root.innerHTML = `${createSummaryBox('Sprint finished', `Final score: ${sprintState.score}.`)}<button type="button" class="btn btn-primary" id="sprintAgain">Sprint again</button>`;
+      document.getElementById('sprintAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('flashSprintRestart', restart);
+    restart();
+  }
+
+  /* ---------- 10. Word Search ---------- */
+  let wordSearchState = null;
+  function initWordSearch() {
+    const root = document.getElementById('wordSearchRoot');
+    if (!root) return;
+    const size = 12;
+    const words = pickMany(GAME_TERMS.searchWords, 8);
+    const restart = () => {
+      wordSearchState = {
+        grid: Array.from({ length: size }, () => Array(size).fill('')),
+        placed: [],
+        found: new Set(),
+        start: performance.now(),
+        selecting: null,
+        cells: []
+      };
+      placeWords();
+      fillGrid();
+      renderWordSearch();
+    };
+    function placeWords() {
+      const dirs = [[1,0],[0,1]];
+      words.forEach(word => {
+        const w = word.toUpperCase();
+        for (let attempt = 0; attempt < 120; attempt++) {
+          const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)];
+          const x = Math.floor(Math.random() * size);
+          const y = Math.floor(Math.random() * size);
+          const endX = x + dx * (w.length - 1);
+          const endY = y + dy * (w.length - 1);
+          if (endX >= size || endY >= size) continue;
+          let ok = true;
+          for (let i = 0; i < w.length; i++) {
+            const cx = x + dx * i, cy = y + dy * i;
+            const cur = wordSearchState.grid[cy][cx];
+            if (cur && cur !== w[i]) { ok = false; break; }
+          }
+          if (!ok) continue;
+          for (let i = 0; i < w.length; i++) wordSearchState.grid[y + dy * i][x + dx * i] = w[i];
+          wordSearchState.placed.push({ word: w, x, y, dx, dy });
+          return;
+        }
+      });
+    }
+    function fillGrid() {
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) if (!wordSearchState.grid[y][x]) wordSearchState.grid[y][x] = GAME_LETTERS[Math.floor(Math.random() * GAME_LETTERS.length)];
+      }
+    }
+    function elapsed() { return (performance.now() - wordSearchState.start) / 1000; }
+    function renderWordSearch(message = '') {
+      const list = words.map(w => `<span class="word-item${wordSearchState.found.has(w) ? ' found' : ''}">${w}</span>`).join('');
+      root.innerHTML = `
+        <div class="mini-status">Found ${wordSearchState.found.size}/${words.length} · Time ${elapsed().toFixed(1)}s</div>
+        <div class="wordsearch-board" id="wordsearchBoard"></div>
+        <div class="wordsearch-list">${list}</div>
+        <div class="game-feedback">${message}</div>
+      `;
+      const board = document.getElementById('wordsearchBoard');
+      wordSearchState.cells = [];
+      for (let y = 0; y < size; y++) {
+        const row = document.createElement('div');
+        row.className = 'wordsearch-row';
+        for (let x = 0; x < size; x++) {
+          const cell = document.createElement('button');
+          cell.type = 'button';
+          cell.className = 'wordsearch-cell';
+          cell.textContent = wordSearchState.grid[y][x];
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+          cell.addEventListener('click', () => selectCell(x, y));
+          row.appendChild(cell);
+          wordSearchState.cells.push(cell);
+        }
+        board.appendChild(row);
+      }
+    }
+    function highlightPath(path) {
+      wordSearchState.cells.forEach(c => c.classList.remove('path'));
+      path.forEach(([x, y]) => wordSearchState.cells[y * size + x].classList.add('path'));
+    }
+    function selectCell(x, y) {
+      if (!wordSearchState.selecting) {
+        wordSearchState.selecting = { x, y };
+        highlightPath([[x, y]]);
+        return;
+      }
+      const start = wordSearchState.selecting;
+      const dx = Math.sign(x - start.x);
+      const dy = Math.sign(y - start.y);
+      const horiz = start.y === y && x !== start.x;
+      const vert = start.x === x && y !== start.y;
+      if (!horiz && !vert) {
+        wordSearchState.selecting = null;
+        renderWordSearch('Pick a straight horizontal or vertical word.');
+        return;
+      }
+      const len = Math.max(Math.abs(x - start.x), Math.abs(y - start.y)) + 1;
+      const path = [];
+      let word = '';
+      for (let i = 0; i < len; i++) {
+        const cx = start.x + dx * i;
+        const cy = start.y + dy * i;
+        word += wordSearchState.grid[cy][cx];
+        path.push([cx, cy]);
+      }
+      highlightPath(path);
+      const found = wordSearchState.placed.find(p => {
+        const coords = Array.from({ length: p.word.length }, (_, i) => `${p.x + p.dx * i},${p.y + p.dy * i}`);
+        const test = path.map(([px, py]) => `${px},${py}`);
+        return coords.length === test.length && coords.every(c => test.includes(c));
+      });
+      if (found && !wordSearchState.found.has(found.word)) {
+        wordSearchState.found.add(found.word);
+        addXp(3);
+        tone(660, 0.08, 'triangle', 0.06);
+        if (wordSearchState.found.size === words.length) finishWordSearch();
+        else renderWordSearch(`Found ${found.word}!`);
+      } else {
+        tone(180, 0.08, 'sawtooth', 0.05);
+        renderWordSearch('Not a placed word. Try another line.');
+      }
+      wordSearchState.selecting = null;
+    }
+    function finishWordSearch() {
+      recordGameResult('wordSearch', elapsed(), false);
+      unlockBadge('wordsearch_clear');
+      burstConfetti();
+      root.innerHTML = `${createSummaryBox('Word Search cleared', `You found every word in ${elapsed().toFixed(1)} seconds.`)}<button type="button" class="btn btn-primary" id="wordSearchAgain">New puzzle</button>`;
+      document.getElementById('wordSearchAgain')?.addEventListener('click', restart);
+    }
+    bindGameRestart('wordSearchRestart', restart);
+    restart();
+  }
+
+  function initNewGames() {
+    initTrueFalseBlitz();
+    initWordScramble();
+    initHangman();
+    initOddOneOut();
+    initClozeGame();
+    initMillionaireLadder();
+    initOsmosisLab();
+    initTermMatch();
+    initFlashSprint();
+    initWordSearch();
+  }
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -2089,5 +2872,6 @@
   chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
   /* ===================== Init ===================== */
+  initNewGames();
   refreshXpUI();
 })();

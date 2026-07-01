@@ -333,6 +333,39 @@ canvas#bgCanvas{
 .quiz-opt.correct{border-color:var(--green); background:rgba(57,255,136,0.1);}
 .quiz-opt.wrong{border-color:var(--magenta); background:rgba(255,43,214,0.1);}
 
+
+.mini-status{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ink-dim); margin-bottom:12px;}
+.game-qa{font-size:16px; line-height:1.5; margin:10px 0 14px;}
+.game-feedback{margin-top:12px; color:var(--ink-dim); font-size:13px; min-height:1.4em;}
+.game-summary{padding:14px; border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,0.03); margin-bottom:12px;}
+.game-summary strong{display:block; margin-bottom:4px; color:var(--amber);}
+.scramble-word{font-family:'Orbitron',sans-serif; letter-spacing:0.22em; font-size:22px; color:var(--cyan); word-break:break-word;}
+.hangman-word{font-family:'Orbitron',sans-serif; letter-spacing:0.14em; font-size:20px; word-break:break-word;}
+.hangman-letters,.odd-grid{display:flex; flex-wrap:wrap; gap:8px;}
+.mini-btn{
+  min-width:38px; padding:8px 10px; border-radius:10px; border:1px solid var(--border);
+  background:rgba(255,255,255,0.03); color:var(--ink); cursor:pointer; font-family:'JetBrains Mono',monospace;
+}
+.mini-btn:disabled{opacity:0.55; cursor:not-allowed;}
+.term-match-board{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px;}
+.term-match-col{display:flex; flex-direction:column; gap:8px;}
+.term-pill{width:100%; justify-content:flex-start; white-space:normal; text-align:left;}
+.term-pill.def-pill{font-size:13px;}
+.wordsearch-board{display:flex; flex-direction:column; gap:4px; margin:14px 0; user-select:none;}
+.wordsearch-row{display:grid; grid-template-columns:repeat(12,1fr); gap:4px;}
+.wordsearch-cell{
+  aspect-ratio:1/1; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.03);
+  color:var(--ink); font-family:'JetBrains Mono',monospace; font-size:13px; cursor:pointer;
+}
+.wordsearch-cell.path{border-color:var(--cyan); background:rgba(0,240,255,0.14); color:var(--cyan);}
+.wordsearch-list{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+.word-item{padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:rgba(255,255,255,0.03); font-size:12px; letter-spacing:0.08em;}
+.word-item.found{text-decoration:line-through; color:var(--green); border-color:rgba(57,255,136,0.4);}
+@media (max-width:700px){
+  .term-match-board{grid-template-columns:1fr;}
+  .wordsearch-row{grid-template-columns:repeat(12,minmax(0,1fr));}
+}
+
 /* ---------- Chatbot ---------- */
 .chat-fab{
   position:fixed; bottom:22px; right:22px; z-index:50; width:58px; height:58px;
@@ -633,6 +666,67 @@ canvas#bgCanvas{
               <button class="mode-btn boss" data-mode="boss">👑 Boss Mode<br><span style="font-size:11px;color:var(--ink-dim);">20 questions · 10s each · 2x XP</span></button>
             </div>
           </div>
+        </div>
+
+        <div class="game-panel">
+          <h3>1. True/False Blitz</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Sixty seconds of fast true/false calls with short explanations after each answer.</p>
+          <div id="tfBlitzRoot"></div>
+          <button class="btn" id="tfBlitzRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>2. Word Scramble</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Unscramble biology terms using the definition as a hint.</p>
+          <div id="scrambleRoot"></div>
+          <button class="btn" id="scrambleRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>3. Hangman</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Guess the term before the six wrong guesses run out.</p>
+          <div id="hangmanRoot"></div>
+          <button class="btn" id="hangmanRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>4. Odd One Out</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Spot the item that does not belong in each group.</p>
+          <div id="oddOneRoot"></div>
+          <button class="btn" id="oddOneRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>5. Fill-in-the-Blank</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Choose the best term to complete each sentence.</p>
+          <div id="clozeRoot"></div>
+          <button class="btn" id="clozeRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>6. Millionaire Ladder</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Climb fifteen questions from easier to harder. One 50:50 lifeline per run.</p>
+          <div id="millionaireRoot"></div>
+          <button class="btn" id="millionaireRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>7. Cell Osmosis Lab</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Pick a cell and solution, then predict the result.</p>
+          <div id="osmosisRoot"></div>
+          <button class="btn" id="osmosisRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>8. Term–Definition Match</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Match six terms to six shuffled definitions as quickly as you can.</p>
+          <div id="termMatchRoot"></div>
+          <button class="btn" id="termMatchRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>9. Flash Recall Sprint</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Answer rapid-fire questions while your combo multiplier climbs.</p>
+          <div id="flashSprintRoot"></div>
+          <button class="btn" id="flashSprintRestart" style="margin-top:14px;">Restart</button>
+        </div>
+        <div class="game-panel">
+          <h3>10. Word Search</h3>
+          <p style="color:var(--ink-dim); font-size:13.5px; margin-top:-6px;">Find the hidden membrane and transport words in the grid.</p>
+          <div id="wordSearchRoot"></div>
+          <button class="btn" id="wordSearchRestart" style="margin-top:14px;">Restart</button>
         </div>
       </div>
     </div>

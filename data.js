@@ -129,6 +129,89 @@ const MEMORY_PAIRS = [
   ["Ribosome", "Builds proteins from amino acids"]
 ];
 
+const GAME_TERMS = {
+  terms: [
+    { term: 'Plasma membrane', def: 'Thin selectively permeable boundary controlling what enters and leaves the cell.', category: 'Membrane' },
+    { term: 'Fluid-mosaic model', def: 'The membrane model describing phospholipids as a fluid layer with proteins scattered through it.', category: 'Membrane' },
+    { term: 'Phospholipid bilayer', def: 'Two layers of phospholipids with hydrophilic heads facing water and hydrophobic tails facing inward.', category: 'Membrane' },
+    { term: 'Membrane protein', def: 'A protein that helps transport substances, receive signals, or anchor the membrane.', category: 'Membrane' },
+    { term: 'Selective permeability', def: 'The property of allowing some substances to cross more easily than others.', category: 'Membrane' },
+    { term: 'Diffusion', def: 'Net movement of particles from higher concentration to lower concentration.', category: 'Transport' },
+    { term: 'Osmosis', def: 'Diffusion of water through a selectively permeable membrane.', category: 'Transport' },
+    { term: 'Active transport', def: 'Movement from low to high concentration using energy, usually ATP.', category: 'Transport' },
+    { term: 'Passive transport', def: 'Movement across a membrane without energy input.', category: 'Transport' },
+    { term: 'Concentration gradient', def: 'A difference in concentration between two regions.', category: 'Transport' },
+    { term: 'Hypotonic solution', def: 'A solution with lower solute concentration than the cell; water tends to enter the cell.', category: 'Transport' },
+    { term: 'Hypertonic solution', def: 'A solution with higher solute concentration than the cell; water tends to leave the cell.', category: 'Transport' },
+    { term: 'Isotonic solution', def: 'A solution with the same solute concentration as the cell; no net water movement.', category: 'Transport' },
+    { term: 'Plasmolysis', def: 'Shrinkage of the cell contents away from the cell wall after water loss in a hypertonic solution.', category: 'Cell wall' },
+    { term: 'Turgor pressure', def: 'Water pressure pushing the cell membrane against the cell wall in plant cells.', category: 'Cell wall' },
+    { term: 'Cell wall', def: 'Rigid outer layer in plant cells made mainly of cellulose.', category: 'Cell wall' },
+    { term: 'Cellulose', def: 'Structural polysaccharide that strengthens plant cell walls.', category: 'Cell wall' },
+    { term: 'Nucleus', def: 'Organelle that contains genetic material in eukaryotic cells.', category: 'Organelle' },
+    { term: 'Vacuole', def: 'Large storage sac that helps maintain turgidity in plant cells.', category: 'Organelle' },
+    { term: 'Ribosome', def: 'Site of protein synthesis.', category: 'Organelle' }
+  ],
+  tfStatements: [
+    { text: 'The plasma membrane is about 7–10 nm thick.', answer: true, why: 'That is the usual textbook thickness of the fluid-mosaic membrane.' },
+    { text: 'Hydrophobic heads of phospholipids face the watery environment.', answer: false, why: 'The hydrophilic heads face water; the hydrophobic tails point inward.' },
+    { text: 'Diffusion requires ATP.', answer: false, why: 'Diffusion is passive and does not require cellular energy.' },
+    { text: 'Osmosis is the movement of water across a selectively permeable membrane.', answer: true, why: 'That is the standard definition of osmosis.' },
+    { text: 'Active transport moves substances down the concentration gradient.', answer: false, why: 'Active transport moves substances against the gradient.' },
+    { text: 'A hypotonic solution can make a plant cell turgid.', answer: true, why: 'Water enters the plant cell and the vacuole swells, increasing turgor pressure.' },
+    { text: 'A hypertonic solution can cause plasmolysis in plant cells.', answer: true, why: 'Water leaves the cell and the membrane pulls away from the wall.' },
+    { text: 'The cell wall is selectively permeable like the plasma membrane.', answer: false, why: 'The cell wall is freely permeable; selective permeability is a membrane property.' },
+    { text: 'Animal cells have a cell wall.', answer: false, why: 'Animal cells have a plasma membrane but no cell wall.' },
+    { text: 'Ribosomes make proteins.', answer: true, why: 'Ribosomes are the site of protein synthesis.' },
+    { text: 'The nucleus is the control centre of the cell.', answer: true, why: 'It contains DNA and helps control cell activities.' },
+    { text: 'Eukaryotic cells have membrane-bound organelles.', answer: true, why: 'Plant and animal cells have organelles such as the nucleus and mitochondria.' },
+    { text: 'Prokaryotes have a true nucleus.', answer: false, why: 'Prokaryotes do not have a membrane-bound nucleus.' },
+    { text: 'Water moves into a cell in a hypertonic solution.', answer: false, why: 'Water tends to leave the cell in a hypertonic solution.' },
+    { text: 'The plant cell wall is mainly made of cellulose.', answer: true, why: 'Cellulose is the main structural material of plant walls.' },
+    { text: 'The fluid part of the fluid-mosaic model allows sideways movement of phospholipids.', answer: true, why: 'Phospholipids and some proteins can move laterally within the membrane.' },
+    { text: 'Endocytosis is a type of transport that brings substances into the cell.', answer: true, why: 'The membrane folds inward to form a vesicle.' },
+    { text: 'Exocytosis exports substances out of the cell.', answer: true, why: 'Vesicles fuse with the membrane and release their contents outside.' },
+    { text: 'A concentration gradient means a difference in concentration between two areas.', answer: true, why: 'Transport processes often depend on this difference.' },
+    { text: 'Isotonic means water moves only into the cell.', answer: false, why: 'Water moves both in and out, with no net movement.' },
+    { text: 'Membrane proteins can help transport materials.', answer: true, why: 'Channel and carrier proteins assist movement across the membrane.' },
+    { text: 'The cell wall gives plant cells support and shape.', answer: true, why: 'Its rigid cellulose structure helps maintain shape.' },
+    { text: 'Osmosis is the movement of solute particles.', answer: false, why: 'Osmosis refers specifically to water molecules.' },
+    { text: 'Turgor pressure helps keep plant cells firm.', answer: true, why: 'Water pressure inside the cell pushes the membrane against the wall.' }
+  ],
+  oddGroups: [
+    { items: ['Osmosis', 'Diffusion', 'Active transport', 'Ribosome'], odd: 3, why: 'Ribosome is an organelle; the others are transport processes.' },
+    { items: ['Cellulose', 'Starch', 'Protein', 'Phospholipid'], odd: 1, why: 'Starch is a storage polysaccharide; the others are structural membrane or wall components.' },
+    { items: ['Nucleus', 'Mitochondrion', 'Ribosome', 'Cell wall'], odd: 3, why: 'Cell wall is not an organelle and is outside the membrane.' },
+    { items: ['Hypotonic', 'Hypertonic', 'Isotonic', 'Mitochondrial'], odd: 3, why: 'The first three describe solution types; mitochondrial does not.' },
+    { items: ['Turgid', 'Plasmolysed', 'Shrivelled', 'Photosynthetic'], odd: 3, why: 'The first three describe cell water states; photosynthetic is a process.' },
+    { items: ['Plasma membrane', 'Cell wall', 'Vacuole', 'Chloroplast'], odd: 1, why: 'The cell wall is an outer boundary; the others are organelles or structures inside the cell.' },
+    { items: ['Channel protein', 'Carrier protein', 'Enzyme', 'Membrane protein'], odd: 2, why: 'Enzyme is a broad protein type; the others are membrane-transport related.' },
+    { items: ['Passive transport', 'Diffusion', 'Osmosis', 'Active transport'], odd: 3, why: 'Active transport uses energy; the others are passive processes.' },
+    { items: ['Bacteria', 'Animal cell', 'Plant cell', 'Eukaryote'], odd: 0, why: 'Bacteria are prokaryotes; the others are eukaryotic categories or examples.' },
+    { items: ['Cellulose', 'Hydrophobic tails', 'Hydrophilic heads', 'Phospholipid'], odd: 0, why: 'Cellulose is wall material, not a membrane phospholipid part.' },
+    { items: ['Endocytosis', 'Exocytosis', 'Osmosis', 'Vesicle'], odd: 2, why: 'Osmosis is water transport, not vesicle transport.' },
+    { items: ['Cytoplasm', 'Vacuole', 'Nucleus', 'Membrane'], odd: 3, why: 'Membrane is a boundary, while the others are cell components or organelles.' }
+  ],
+  cloze: [
+    { sentence: 'The plasma membrane follows the ____ model.', answer: 'fluid-mosaic', options: ['fluid-mosaic', 'double-helix', 'lock-and-key', 'cellulose-web'] },
+    { sentence: 'Water moving across a selectively permeable membrane is called ____.', answer: 'osmosis', options: ['osmosis', 'diffusion', 'phagocytosis', 'transpiration'] },
+    { sentence: 'A solution with lower solute concentration than the cell is ____.', answer: 'hypotonic', options: ['hypotonic', 'hypertonic', 'isotonic', 'neutral'] },
+    { sentence: 'A plant cell in a hypertonic solution may undergo ____.', answer: 'plasmolysis', options: ['plasmolysis', 'mitosis', 'lysis', 'turgor'] },
+    { sentence: 'The plant cell wall is made mainly of ____.', answer: 'cellulose', options: ['cellulose', 'starch', 'protein', 'lipid'] },
+    { sentence: 'Movement from low concentration to high concentration requires ____ transport.', answer: 'active', options: ['active', 'passive', 'simple', 'facilitated'] },
+    { sentence: 'A cell that is swollen and firm is described as ____.', answer: 'turgid', options: ['turgid', 'flaccid', 'crenated', 'fragile'] },
+    { sentence: 'The cell organelle that contains DNA is the ____.', answer: 'nucleus', options: ['nucleus', 'ribosome', 'vacuole', 'Golgi apparatus'] },
+    { sentence: 'Protein synthesis happens on the ____.', answer: 'ribosome', options: ['ribosome', 'lysosome', 'centriole', 'chloroplast'] },
+    { sentence: 'The membrane is ____ to many substances.', answer: 'selectively permeable', options: ['selectively permeable', 'opaque', 'rigid', 'electrified'] },
+    { sentence: 'The difference in concentration between two areas is the concentration _____.', answer: 'gradient', options: ['gradient', 'equator', 'ratio', 'zone'] },
+    { sentence: 'Plant cells take in water and become ____ in hypotonic solutions.', answer: 'turgid', options: ['turgid', 'plasmolysed', 'shrivelled', 'stale'] },
+    { sentence: 'Exocytosis moves materials ____ the cell.', answer: 'out of', options: ['out of', 'into', 'around', 'under'] },
+    { sentence: 'The fluid part of the membrane allows ____ movement of phospholipids.', answer: 'sideways', options: ['sideways', 'vertical', 'circular', 'random jumping'] },
+    { sentence: 'A prokaryote does not have a true ____.', answer: 'nucleus', options: ['nucleus', 'cell wall', 'ribosome', 'membrane'] }
+  ],
+  searchWords: ['OSMOSIS', 'DIFFUSION', 'MEMBRANE', 'VACUOLE', 'NUCLEUS', 'PROTEIN', 'LIPID', 'TURGOR', 'CELLULOSE', 'RIBOSOME', 'CYTOPLASM', 'PLASMOLYSIS']
+};
+
 // Achievement badges — unlocked via app.js, persisted in localStorage
 const BADGES = [
   { id: 'first_steps',   label: 'First Steps',     desc: 'Opened your first question set',              icon: '🌱' },
@@ -139,9 +222,14 @@ const BADGES = [
   { id: 'boss_slayer',   label: 'Boss Slayer',     desc: 'Completed Boss Mode',                          icon: '👑' },
   { id: 'streak_10',     label: 'On Fire',         desc: 'Hit a 10-question correct streak',             icon: '🔥' },
   { id: 'level_5',       label: 'Rising Scholar',  desc: 'Reached Level 5',                              icon: '⭐' },
-  { id: 'flash_streak',  label: 'Flashcard Fan',   desc: 'Marked "Got it" on 15 flashcards',              icon: '🗂️' },
-  { id: 'microscopist',  label: 'Microscopist',    desc: 'Brought 5 specimens into perfect focus',       icon: '🔭' }
+  { id: 'flash_streak',  label: 'Flashcard Fan',   desc: 'Marked "Got it" on 15 flashcards',              icon: '🗂' },
+  { id: 'microscopist',  label: 'Microscopist',    desc: 'Brought 5 specimens into perfect focus',       icon: '🔭' },
+  { id: 'millionaire_win', label: 'Millionaire',    desc: 'Cleared the full Millionaire Ladder',          icon: '🏆' },
+  { id: 'wordsearch_clear', label: 'Word Hunter',   desc: 'Found every word in the Word Search',          icon: '🔎' },
+  { id: 'osmosis_ace',    label: 'Osmosis Ace',     desc: 'Solved the Cell Osmosis Lab perfectly',        icon: '💧' },
+  { id: 'blitz_20',       label: 'Blitz 20',        desc: 'Scored 20 or more in True/False Blitz',        icon: '⚡' }
 ];
+
 
 // ===================== Prokaryotic vs Eukaryotic quick-reference table =====================
 const PROK_EUK_TABLE = [
